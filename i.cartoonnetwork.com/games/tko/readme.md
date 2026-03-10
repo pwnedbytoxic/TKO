@@ -1,6 +1,6 @@
 # Titanic KungFu Offensive (TKO) Rehost
 
-This repository contains work-in-progress tooling for running **Titanic KungFu Offensive**, a discontinued Cartoon Network Flash game, locally.
+This repository contains work-in-progress tooling for running **Titanic KungFu Offensive**, a discontinued Cartoon Network Flash game, as a rehosted server.
 
 The original game relied on **SmartFoxServer 1.x** for multiplayer functionality. Since the original servers are long gone, this project focuses on **recreating the server behavior** so the client can run again.
 
