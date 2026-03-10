@@ -33,7 +33,7 @@ Once the server implementation is stable, the goal is to run a **public instance
 The plan is to host the server on my domain:
 
 ```
-https://hoody.cx
+https://www.hoody.cx/playtko
 ```
 
 This would allow players to connect to a live instance of the game again rather than only running it locally.
@@ -73,7 +73,7 @@ Both communication paths are implemented in the emulator.
 
 # Repository Contents
 
-### `sfs_bluebox_combined_v5.py`
+### `tko_server.py`
 
 Combined SmartFox server emulator.
 

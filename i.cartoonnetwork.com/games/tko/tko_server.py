@@ -1,25 +1,7 @@
 #!/usr/bin/env python3
-"""
-sfs_bluebox_combined_v5.py
-
-Combined SmartFox (TCP) + BlueBox (HTTP) emulator for TKO / Titanic KungFu Offensive.
-
-- TCP server (SmartFox protocol) listens on port 9339 by default.
-  Accepts null-terminated XML frames from client, replies with null-terminated frames.
-
-- HTTP server (BlueBox/HttpBox.do) listens on port 8080 by default.
-  Implements connect handshake (#sid), verChk, poll, login, getRmList, autoJoin/joinRoom flows.
-
-Shared state:
-- ROOMS (one Lobby room)
-- SESSIONS_HTTP: sid -> {"created","uid","queue":[]}
-- SESSIONS_TCP: mapping by connection (for logging/debug)
-
-Run: python sfs_bluebox_combined_v5.py
-"""
-
 import argparse
 import html
+import json
 import random
 import re
 import socket
@@ -30,38 +12,31 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn, ThreadingTCPServer, StreamRequestHandler
 from urllib.parse import parse_qs, unquote_plus
 
-# ---------- Config ----------
 DEFAULT_TCP_PORT = 9339
 DEFAULT_HTTP_PORT = 8080
-
-# On HTTP poll: if True, send all queued messages in one poll; if False, send one message per poll.
 HTTP_SEND_ALL_QUEUED = False
 
-# ---------- Shared state ----------
 ROUNDS_LOCK = threading.Lock()
 ROOMS = {
-    1: {
-        "id": 1,
+    2: {
+        "id": 2,
         "n": "Lobby",
         "name": "Lobby",
-        "maxu": 10,
+        "maxu": 2,
         "maxs": 0,
         "temp": 0,
         "game": 0,
         "priv": 0,
-        "limbo": 0,
-        "ucnt": 1,  # user count
-        "scnt": 0,  # spectator count
+        "lmb": 1,
+        "ucnt": 1,
+        "scnt": 0,
     }
 }
 
-# HTTP sessions: sid -> {"created":..., "uid":..., "queue": [xmlstr,...]}
 SESSIONS_HTTP = {}
-
-# TCP client tracking: a map of uid -> connection info (for debugging), or conn->uid
 TCP_CLIENTS = {}
 
-# helper: generate ids
+
 def make_session_id():
     return str(random.randint(100000, 999999))
 
@@ -70,16 +45,27 @@ def make_uid():
     return random.randint(1000, 9999)
 
 
-# ---------- XML message factories ----------
+def debug_print(*args, **kwargs):
+    print(*args, **kwargs)
+    sys.stdout.flush()
+
+
 def apiOK_msg():
     return "<msg t='sys'><body action='apiOK' r='0' /></msg>"
 
 
 def logOK_msg(uid, nick="player"):
-    # logOK (client-side handlers often expect this)
     return (
         "<msg t='sys'><body action='logOK' r='0'>"
-        f"<login id='{uid}' mod='0' n='{nick}' />"
+        f"<login id='{uid}' mod='0' n='{html.escape(nick)}' />"
+        "</body></msg>"
+    )
+
+
+def ucount_msg(room_id=2, count=1):
+    return (
+        "<msg t='sys'><body action='uCount' r='0'>"
+        f"<room id='{room_id}' ucnt='{count}' />"
         "</body></msg>"
     )
 
@@ -92,35 +78,32 @@ def rmList_msg():
                 "<rm "
                 f"id='{r['id']}' "
                 f"n='{html.escape(r['name'])}' "
-                f"name='{html.escape(r['name'])}' "
                 f"maxu='{r['maxu']}' "
                 f"maxs='{r['maxs']}' "
                 f"temp='{r['temp']}' "
                 f"game='{r['game']}' "
                 f"priv='{r['priv']}' "
-                f"limbo='{r['limbo']}' "
+                f"lmb='{r['lmb']}' "
                 f"ucnt='{r['ucnt']}' "
                 f"scnt='{r['scnt']}'"
-                " />"
+                "></rm>"
             )
-
     return (
-        "<msg t='sys'>"
-        "<body action='rmList' r='0'>"
-        "<rmList>"
+        "<msg t='sys'><body action='rmList' r='0'><rmList>"
         f"{rooms_xml}"
-        "</rmList>"
-        "</body>"
-        "</msg>"
+        "</rmList></body></msg>"
     )
 
 
-def joinOK_msg(uid, room_id=1, nick="player"):
+def joinOK_msg(uid, room_id=2, nick="player", pid=-1):
     return (
-        "<msg t='sys'><body action='joinOK' r='0'>"
-        f"<room id='{room_id}' name='{html.escape(ROOMS[room_id]['name'])}'>"
-        f"<u id='{uid}' n='{html.escape(nick)}' mod='0' />"
-        "</room></body></msg>"
+        f"<msg t='sys'><body action='joinOK' r='{room_id}'>"
+        f"<pid id='{pid}' />"
+        "<uLs>"
+        f"<u i='{uid}' n='{html.escape(nick)}' m='0' s='0' p='{pid}'><vars /></u>"
+        "</uLs>"
+        "<vars />"
+        "</body></msg>"
     )
 
 
@@ -128,32 +111,59 @@ def roundTripRes_msg():
     return "<msg t='sys'><body action='roundTripRes' r='0'/></msg>"
 
 
-# helper: prefix sid for BlueBox HTTP responses
-def wrap_http_sid(sid, xml):
-    return sid + xml
+def xt_str_frame(*parts):
+    return "%" + "%".join(str(p) for p in parts) + "%"
 
 
-# ---------- TCP SmartFox server ----------
+def xt_json_frame(data_obj):
+    return json.dumps({"t": "xt", "b": {"o": data_obj}}, separators=(",", ":"))
 
-def debug_print(*args, **kwargs):
-    """Print and flush for real-time logs"""
-    print(*args, **kwargs)
-    sys.stdout.flush()
+
+def parse_login(xml_text):
+    nick = "player"
+    zone = "Game"
+    password = ""
+
+    m = re.search(r"<nick><!\[CDATA\[(.*?)\]\]></nick>", xml_text, re.S)
+    if m:
+        nick = m.group(1) or "player"
+
+    m = re.search(r"<pword><!\[CDATA\[(.*?)\]\]></pword>", xml_text, re.S)
+    if m:
+        password = m.group(1)
+
+    m = re.search(r"<login\s+z=['\"]([^'\"]+)['\"]", xml_text)
+    if m:
+        zone = m.group(1)
+
+    return zone, nick, password
+
+
+def parse_xt_str_frame(frame):
+    if not frame.startswith("%"):
+        return None
+    parts = frame[1:].split("%")
+    if parts and parts[-1] == "":
+        parts.pop()
+    if len(parts) < 4 or parts[0] != "xt":
+        return None
+    return {
+        "t": parts[0],
+        "ext": parts[1],
+        "cmd": parts[2],
+        "room_id": parts[3],
+        "params": parts[4:],
+    }
 
 
 class SmartFoxTCPHandler(StreamRequestHandler):
-    """
-    Each client connection handled here.
-    SmartFox Flash clients often send null-terminated XML messages.
-    We'll read until null (\x00) and process messages.
-    """
-
     def setup(self):
         super().setup()
         self.addr = self.client_address
         self.conn = self.request
-        self.conn.settimeout(60)  # 60s idle timeout
+        self.conn.settimeout(60)
         self.uid = None
+        self.nick = "player"
         debug_print(f"[TCP] Connection from {self.addr}")
 
     def handle(self):
@@ -165,84 +175,127 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                     debug_print(f"[TCP] Connection closed by {self.addr}")
                     break
                 buffer += chunk
-                # messages are null-terminated - split
                 while b"\x00" in buffer:
                     frame, buffer = buffer.split(b"\x00", 1)
                     text = frame.decode(errors="replace").strip()
                     if not text:
                         continue
                     debug_print(f"[TCP] Received: {text}")
-                    self.process_message(text)
+                    self.process_frame(text)
         except socket.timeout:
             debug_print(f"[TCP] Timeout for {self.addr}")
         except Exception as e:
             debug_print(f"[TCP] Error for {self.addr}: {e}")
         finally:
-            # cleanup
             if self.uid:
                 debug_print(f"[TCP] Client {self.addr} (uid {self.uid}) disconnected")
             else:
                 debug_print(f"[TCP] Client {self.addr} disconnected")
 
-    def process_message(self, xml):
-        """Handle incoming SmartFox TCP XML messages (very lightweight parser)"""
-        # action attr: action='xxx'
+    def process_frame(self, frame):
+        if frame.startswith("<"):
+            self.process_xml(frame)
+            return
+        if frame.startswith("%"):
+            self.process_xt_str(frame)
+            return
+        if frame.startswith("{"):
+            self.process_json(frame)
+            return
+        debug_print(f"[TCP] Unhandled non-XML frame: {frame}")
+
+    def process_xml(self, xml):
         act_m = re.search(r"action=['\"]?([^'\"> ]+)", xml)
         action = act_m.group(1) if act_m else None
 
-        # version check
         if "verChk" in xml:
-            # correct response is apiOK
-            debug_print("[TCP] verChk -> sending apiOK")
             self.send_tcp(apiOK_msg())
-
             return
 
-        # login
         if action == "login" or "<login" in xml:
+            zone, nick, password = parse_login(xml)
             uid = make_uid()
             self.uid = uid
-            TCP_CLIENTS[self] = {"uid": uid, "addr": self.addr, "time": time.time()}
-            debug_print(f"[TCP] login -> assigned uid {uid} - sending logOK, rmList, uCount, joinOK")
-            # send logOK
-            self.send_tcp(logOK_msg(uid))
+            self.nick = nick or "player"
+            TCP_CLIENTS[self] = {
+                "uid": uid,
+                "nick": self.nick,
+                "addr": self.addr,
+                "time": time.time(),
+                "zone": zone,
+                "password": password,
+            }
+            debug_print(f"[TCP] login -> uid={uid} nick={self.nick!r} zone={zone!r} pword={password!r}")
+
+            self.send_tcp(logOK_msg(uid, self.nick))
             self.send_tcp(rmList_msg())
-
-            self.send_tcp(
-            "<msg t='sys'><body action='uCount' r='0'><room id='1' ucount='1'/></body></msg>"
-            )
-
-            self.send_tcp(joinOK_msg(uid))
+            self.send_tcp(joinOK_msg(uid, room_id=2, nick=self.nick, pid=-1))
+            self.send_tcp(ucount_msg(room_id=2, count=1))
+            self.send_tcp(xt_json_frame({"_cmd": "_logOK", "id": 2, "name": self.nick}))
             return
 
-        # getRmList (explicit request)
-        if "getRmList" in xml or "getRmList".lower() in xml.lower():
-            debug_print("[TCP] getRmList -> sending rmList")
+        if "getRmList" in xml:
             self.send_tcp(rmList_msg())
             return
 
         if action in ("autoJoin", "joinRoom", "join"):
-            # ack join by sending joinOK
             if not self.uid:
                 self.uid = make_uid()
-            debug_print(f"[TCP] join request -> send joinOK for uid {self.uid}")
-            self.send_tcp(joinOK_msg(self.uid))
+            self.send_tcp(joinOK_msg(self.uid, room_id=2, nick=self.nick, pid=-1))
+            self.send_tcp(ucount_msg(room_id=2, count=1))
             return
 
-        # roundTripBench => respond with roundTripRes
         if "roundTripBench" in xml or "roundTrip" in xml:
-            debug_print("[TCP] roundTripBench -> send roundTripRes")
             self.send_tcp(roundTripRes_msg())
             return
 
-        debug_print("[TCP] No handler matched for incoming TCP XML")
+        debug_print("[TCP] No XML handler matched")
 
-    def send_tcp(self, xml):
-        """Send xml followed by null byte as SmartFox expects"""
+    def process_xt_str(self, frame):
+        msg = parse_xt_str_frame(frame)
+        if not msg:
+            debug_print(f"[TCP] Bad XT STR frame: {frame}")
+            return
+
+        debug_print(f"[TCP] XT STR parsed: {msg}")
+        cmd = msg["cmd"]
+
+        if cmd == "rlj":
+            self.send_tcp(xt_str_frame("xt", "_ljs"))
+            return
+
+        if cmd == "rlp":
+            self.send_tcp(xt_str_frame("xt", "_slp"))
+            return
+
+        if cmd == "rgf":
+            self.send_tcp(xt_str_frame("xt", "_gjs"))
+
+            def delayed_start():
+                time.sleep(0.2)
+                try:
+                    self.send_tcp(xt_str_frame("xt", "_strt"))
+                except Exception:
+                    pass
+
+            threading.Thread(target=delayed_start, daemon=True).start()
+            return
+
+        if cmd == "ka":
+            return
+
+        if cmd == "rgq":
+            return
+
+        debug_print(f"[TCP] Unhandled XT STR command: {cmd}")
+
+    def process_json(self, text):
+        debug_print(f"[TCP] Unhandled inbound JSON frame: {text}")
+
+    def send_tcp(self, payload):
         try:
-            payload = (xml + "\x00").encode()
-            self.conn.sendall(payload)
-            debug_print(f"[TCP] Sent: {xml}")
+            self.conn.sendall((payload + "\x00").encode("utf-8"))
+            debug_print(f"[TCP] Sent: {payload}")
         except Exception as e:
             debug_print(f"[TCP] Error sending to {self.addr}: {e}")
 
@@ -252,14 +305,7 @@ class ThreadedTCPServer(ThreadingTCPServer):
     allow_reuse_address = True
 
 
-# ---------- HTTP BlueBox server ----------
-
 class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
-    """
-    Implements /BlueBox/HttpBox.do POST handler.
-    Accepts form encoded body containing sfsHttp parameter (urlencoded).
-    """
-
     def _read_sfsHttp(self):
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length).decode(errors="replace")
@@ -278,96 +324,85 @@ class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
         debug_print("[HTTP] Raw body (first 300):", raw[:300])
         debug_print("[HTTP] Decoded sfsHttp (first 400):", sfs[:400])
 
-        # handshake
         if sfs == "connect":
             sid = make_session_id()
-            SESSIONS_HTTP[sid] = {"created": time.time(), "uid": None, "queue": []}
-            response = "#" + sid
-            debug_print("[HTTP] connect -> handshake reply:", response)
-            return self._send_text(response)
+            SESSIONS_HTTP[sid] = {"created": time.time(), "uid": None, "nick": "player", "queue": []}
+            return self._send_text("#" + sid)
 
-        # session-prefixed payloads
         m = re.match(r"^(\d+)(.*)$", sfs, re.S)
         if not m:
-            debug_print("[HTTP] Unknown sfsHttp format; replying empty")
             return self._send_text("")
 
         sid, payload = m.group(1), m.group(2).strip()
-        debug_print("[HTTP] Session:", sid, "Payload snippet:", payload[:300])
-
         if sid not in SESSIONS_HTTP:
-            debug_print("[HTTP] Unknown session id:", sid, " -> reply ERR#01")
             return self._send_text("ERR#01")
 
-        # poll (server delivers queued messages on poll)
         if payload.startswith("poll"):
             q = SESSIONS_HTTP[sid].get("queue", [])
-            if q:
-                if HTTP_SEND_ALL_QUEUED:
-                    out = "".join([sid + msg for msg in q])
-                    SESSIONS_HTTP[sid]["queue"] = []
-                    debug_print(f"[HTTP] -> delivering ALL queued messages (count {len(q)})")
-                    return self._send_text(out)
-                else:
-                    # send one queued message
-                    msg = q.pop(0)
-                    SESSIONS_HTTP[sid]["queue"] = q
-                    out = sid + msg
-                    debug_print(f"[HTTP] -> delivering ONE queued message; remaining: {len(q)}")
-                    return self._send_text(out)
-            else:
-                debug_print("[HTTP] Poll -> no queued events, returning empty")
+            if not q:
                 return self._send_text("")
+            if HTTP_SEND_ALL_QUEUED:
+                out = "".join([sid + msg for msg in q])
+                SESSIONS_HTTP[sid]["queue"] = []
+                return self._send_text(out)
+            msg = q.pop(0)
+            return self._send_text(sid + msg)
 
-        # basic action autodetect
         act_m = re.search(r"action=['\"]?([^'\"> ]+)", payload)
         action = act_m.group(1) if act_m else None
 
-        # verChk -> reply verChk? NO. SmartFox expects apiOK.
         if "verChk" in payload:
-            # send apiOK in HTTP response
-            reply = apiOK_msg()
-            debug_print("[HTTP] verChk -> replying apiOK")
-            return self._send_text(sid + reply)
+            return self._send_text(sid + apiOK_msg())
 
-        # login: queue apiOK + logOK; client will poll to pick them up
         if action == "login" or "action='login'" in payload:
+            zone, nick, password = parse_login(payload)
             uid = make_uid()
-            SESSIONS_HTTP[sid]["uid"] = uid
-            enqueue = SESSIONS_HTTP[sid].setdefault("queue", [])
-            enqueue.append(apiOK_msg())
-            enqueue.append(logOK_msg(uid))
-            # Do not enqueue rmList automatically; let client request it with getRmList
-            debug_print(f"[HTTP] login -> queued apiOK + logOK for sid {sid} uid {uid}")
+            sess = SESSIONS_HTTP[sid]
+            sess["uid"] = uid
+            sess["nick"] = nick
+            q = sess.setdefault("queue", [])
+            q.append(logOK_msg(uid, nick))
+            q.append(rmList_msg())
+            q.append(joinOK_msg(uid, room_id=2, nick=nick, pid=-1))
+            q.append(ucount_msg(room_id=2, count=1))
+            q.append(xt_json_frame({"_cmd": "_logOK", "id": 2, "name": nick}))
             return self._send_text("")
 
-        # getRmList: client wants the room list right now
-        if action == "getRmList" or "getRmList" in payload:
-            debug_print("[HTTP] getRmList -> sending rmList now")
+        if "getRmList" in payload:
             return self._send_text(sid + rmList_msg())
 
-        # autoJoin / joinRoom / join: respond joinOK immediately
+        if payload.startswith("%"):
+            msg = parse_xt_str_frame(payload)
+            if msg:
+                cmd = msg["cmd"]
+                if cmd == "rlj":
+                    return self._send_text(sid + xt_str_frame("xt", "_ljs"))
+                if cmd == "rlp":
+                    return self._send_text(sid + xt_str_frame("xt", "_slp"))
+                if cmd == "rgf":
+                    sess = SESSIONS_HTTP[sid]
+                    q = sess.setdefault("queue", [])
+                    q.append(xt_str_frame("xt", "_gjs"))
+                    q.append(xt_str_frame("xt", "_strt"))
+                    return self._send_text("")
+            return self._send_text("")
+
         if action in ("autoJoin", "joinRoom", "join") or "autoJoin" in payload or "joinRoom" in payload:
             uid = SESSIONS_HTTP[sid].get("uid") or make_uid()
-            debug_print(f"[HTTP] {action or 'join'} request -> sending joinOK (uid {uid})")
-            return self._send_text(sid + joinOK_msg(uid))
+            nick = SESSIONS_HTTP[sid].get("nick") or "player"
+            return self._send_text(sid + joinOK_msg(uid, room_id=2, nick=nick, pid=-1))
 
-        # roundTripBench -> reply roundTripRes
         if "roundTripBench" in payload or "roundTrip" in payload or "rndK" in payload:
-            debug_print("[HTTP] roundTripBench -> replying roundTripRes")
             return self._send_text(sid + roundTripRes_msg())
 
-        # fallback
-        debug_print("[HTTP] No handler matched for payload; replying empty")
         return self._send_text("")
 
     def _send_text(self, txt):
-        # txt is bytes or str
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
         if isinstance(txt, str):
-            txt = txt.encode()
+            txt = txt.encode("utf-8")
         self.wfile.write(txt)
 
 
@@ -376,16 +411,12 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     allow_reuse_address = True
 
 
-# ---------- Boot both servers ----------
-
 def run_servers(tcp_port, http_port):
-    # Start TCP server (SmartFox)
     tcp_server = ThreadedTCPServer(("0.0.0.0", tcp_port), SmartFoxTCPHandler)
     tcp_thread = threading.Thread(target=tcp_server.serve_forever, name="tcp-server", daemon=True)
     tcp_thread.start()
     debug_print(f"SmartFox TCP emulator listening on port {tcp_port}")
 
-    # Start HTTP server (BlueBox)
     http_server = ThreadedHTTPServer(("0.0.0.0", http_port), BlueBoxHTTPRequestHandler)
     http_thread = threading.Thread(target=http_server.serve_forever, name="http-server", daemon=True)
     http_thread.start()
@@ -402,17 +433,17 @@ def run_servers(tcp_port, http_port):
         http_server.server_close()
 
 
-# ---------- CLI ----------
 def main():
-    parser = argparse.ArgumentParser(description="Combined SmartFox TCP + BlueBox HTTP emulator (v5)")
-    parser.add_argument("--tcp-port", type=int, default=DEFAULT_TCP_PORT, help="SmartFox TCP port (default 9339)")
-    parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT, help="BlueBox HTTP port (default 8080)")
-    parser.add_argument("--send-all-http", action="store_true", help="HTTP poll: send all queued messages at once")
+    parser = argparse.ArgumentParser(description="Combined SmartFox TCP + BlueBox HTTP emulator (TKO fix)")
+    parser.add_argument("--tcp-port", type=int, default=DEFAULT_TCP_PORT)
+    parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
+    parser.add_argument("--send-all-http", action="store_true")
     args = parser.parse_args()
+
     global HTTP_SEND_ALL_QUEUED
     HTTP_SEND_ALL_QUEUED = bool(args.send_all_http)
 
-    debug_print("Starting combined SFS/BlueBox emulator v5")
+    debug_print("Starting combined SFS/BlueBox emulator (TKO fix)")
     debug_print("TCP (SmartFox) port:", args.tcp_port)
     debug_print("HTTP (BlueBox) port:", args.http_port)
     run_servers(args.tcp_port, args.http_port)
