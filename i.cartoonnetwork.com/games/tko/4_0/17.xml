@@ -1,0 +1,159 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "17">
+	
+	<name>Finn</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>149</id>
+			<name>ANIM_FINN_JAKEDROP_LIGHT</name>
+			<start>841</start>
+			<end>874</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "finn_jake_divebombs">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>150</id>
+			<name>ANIM_FINN_JAKEDROP_STRONG</name>
+			<start>877</start>
+			<end>912</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "finn_jake_divebombs">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>151</id>
+			<name>ANIM_FINN_SWINGKICK_START</name>
+			<start>917</start>
+			<end>923</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "finn_jake_swinging">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>152</id>
+			<name>ANIM_FINN_SWINGKICK_SWING</name>
+			<start>938</start>
+			<end>938</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>153</id>
+			<name>ANIM_FINN_SWINGKICK_RECOVER</name>
+			<start>952</start>
+			<end>969</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>154</id>
+			<name>ANIM_FINN_SUPER</name>
+			<start>981</start>
+			<end>1024</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "finn_jake_axe_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	
+	<effectAnimations>
+		<anim>
+			<id>40</id>
+			<name>JAKE_HIT</name>
+			<start>37</start>
+			<end>65</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>41</id>
+			<name>AXE_HIT</name>
+			<start>1</start>
+			<end>34</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>42</id>
+			<name>JAKE_SWING</name>
+			<start>67</start>
+			<end>97</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+	</effectAnimations>
+
+	<projectileAnimations>
+		<anim>
+			<id>17</id>
+			<name>PROJ_AXE</name>
+			<start>1</start>
+			<end>1</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>16</id>
+			<name>PROJ_JAKE</name>
+			<start>10</start>
+			<end>21</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+		</anim>
+		
+	</projectileAnimations>
+	
+	<color>0.814480185508728,0.7626376152038574,-0.5771178603172302,0,0,0.009960290044546127,0.7720181345939636,0.21802151203155518,0,0,0.6205958127975464,-0.17629659175872803,0.5557007193565369,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

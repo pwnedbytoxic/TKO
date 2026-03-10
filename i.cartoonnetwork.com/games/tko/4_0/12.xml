@@ -1,0 +1,116 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "12">
+	
+	<name>Schnitzel</name>
+	
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>113</id>
+			<name>ANIM_SHNITZEL_CAKE_LIGHT</name>
+			<start>841</start>
+			<end>873</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>114</id>
+			<name>ANIM_SHNITZEL_CAKE_STRONG</name>
+			<start>886</start>
+			<end>931</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>115</id>
+			<name>ANIM_SHNITZEL_SPLASH_START</name>
+			<start>942</start>
+			<end>945</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shnitzel_bodyslam">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>116</id>
+			<name>ANIM_SHNITZEL_SPLASH_DROP</name>
+			<start>957</start>
+			<end>957</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>117</id>
+			<name>ANIM_SHNITZEL_SPLASH_END</name>
+			<start>963</start>
+			<end>982</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_hit4">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>118</id>
+			<name>ANIM_SHNITZEL_SUPER</name>
+			<start>1001</start>
+			<end>1057</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shnitzel_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>31</id>
+			<name>CAKE</name>
+			<start>1</start>
+			<end>29</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shnitzel_cake">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</effectAnimations>
+
+	<projectileAnimations>
+		
+	</projectileAnimations>
+	
+	<color>0.282015323638916,-0.20142459869384766,0.9194092750549316,0,0,0.2745257616043091,0.9440327286720276,-0.21855846047401428,0,0,-0.5993883609771729,1.1423357725143433,0.4570525586605072,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

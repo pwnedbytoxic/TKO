@@ -1,0 +1,113 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "5">
+	
+	<name>Zak</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>66</id>
+			<name>ANIM_ZAK_CLAW_WHIP_LIGHT</name>
+			<start>840</start>
+			<end>860</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_zak_whip">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>67</id>
+			<name>ANIM_ZAK_CLAW_WHIP_STRONG</name>
+			<start>870</start>
+			<end>893</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_zak_whip">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>68</id>
+			<name>ANIM_ZAK_SPIN_KICK_LIGHT</name>
+			<start>900</start>
+			<end>919</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_light_kick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>69</id>
+			<name>ANIM_ZAK_SPIN_KICK_STRONG</name>
+			<start>930</start>
+			<end>970</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_heavy_kick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>70</id>
+			<name>ANIM_ZAK_EYE_BEAM</name>
+			<start>985</start>
+			<end>1031</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>11</id>
+			<name>EYE_BEAM</name>
+			<start>5</start>
+			<end>37</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_swampfire_beam">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		
+	</projectileAnimations>
+	
+	<color>1.401276707649231,-0.6771389842033386,0.21586202085018158,0,4.750001430511475,-0.1951247751712799,1.282976746559143,-0.1478520631790161,0,4.750000953674316,-0.4744427502155304,-0.24765005707740784,1.662092924118042,0,4.750001430511475,0,0,0,1,0</color>
+	
+	<tint>1,.7,.8,1,0,0,0,0</tint>
+	
+	
+</robot>

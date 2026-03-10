@@ -1,0 +1,167 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "15">
+	
+	<name>Humungosaur</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>135</id>
+			<name>ANIM_HSAUR_GRAB_REACH_LIGHT</name>
+			<start>841</start>
+			<end>873</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "Uhsaur_punch_reach">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>136</id>
+			<name>ANIM_HSAUR_GRAB_REACH_STRONG</name>
+			<start>884</start>
+			<end>914</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "Uhsaur_punch_reach">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>137</id>
+			<name>ANIM_HSAUR_GRAB_THROW</name>
+			<start>924</start>
+			<end>958</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_Uhsaur_special_punch_grab">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>138</id>
+			<name>ANIM_HSAUR_STOMP_START</name>
+			<start>1001</start>
+			<end>1004</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>139</id>
+			<name>ANIM_HSAUR_STOMP_FLY</name>
+			<start>1016</start>
+			<end>1016</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>140</id>
+			<name>ANIM_HSAUR_STOMP_ATTACK</name>
+			<start>1022</start>
+			<end>1022</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_Uhsaur_drop">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>141</id>
+			<name>ANIM_HSAUR_STOMP_HIT</name>
+			<start>1033</start>
+			<end>1041</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_Uhsaur_stomp">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>142</id>
+			<name>ANIM_HSAUR_STOMP_MISS</name>
+			<start>1049</start>
+			<end>1070</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>143</id>
+			<name>ANIM_HSAUR_SUPER</name>
+			<start>1075</start>
+			<end>1115</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_Uhsaur_super_missiles">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>39</id>
+			<name>HSAUR_BEAM</name>
+			<start>1</start>
+			<end>45</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>14</id>
+			<name>PROJ_MISSILE</name>
+			<start>1</start>
+			<end>3</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>1.312670111656189,0.3830431401729584,-0.6957130432128906,0,-10,-0.20116697251796722,1.0189050436019897,0.18226194381713867,0,-10,0.4730830490589142,-0.6537068486213684,1.1806236505508423,0,-9.999999046325684,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

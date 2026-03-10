@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "8">
+	
+	<name>Duncan</name>
+	
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>83</id>
+			<name>ANIM_DUNCAN_GROUNDPOUND_LIGHT</name>
+			<start>841</start>
+			<end>859</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>84</id>
+			<name>ANIM_DUNCAN_GROUNDPOUND_STRONG</name>
+			<start>869</start>
+			<end>892</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>85</id>
+			<name>ANIM_DUNCAN_FLIPKICK_START</name>
+			<start>906</start>
+			<end>911</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_jump">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>86</id>
+			<name>ANIM_DUNCAN_FLIPKICK_FLY</name>
+			<start>917</start>
+			<end>917</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>87</id>
+			<name>ANIM_DUNCAN_FLIPKICK_END</name>
+			<start>927</start>
+			<end>944</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>88</id>
+			<name>ANIM_DUNCAN_FLIPKICK_HIT</name>
+			<start>948</start>
+			<end>965</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>89</id>
+			<name>ANIM_DUNCAN_SUPER</name>
+			<start>976</start>
+			<end>1045</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_heavy_kick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>25</id>
+			<name>DUNCAN_ROCKS</name>
+			<start>1</start>
+			<end>20</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_spike">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>32</id>
+			<name>DUNCAN_SUPER1</name>
+			<start>21</start>
+			<end>39</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_duncan_super1">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>33</id>
+			<name>DUNCAN_SUPER2</name>
+			<start>41</start>
+			<end>56</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_duncan_super2">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		
+	</projectileAnimations>
+	
+	<color>0.6753292679786682,0.7887709140777588,-0.46410003304481506,0,0,0.07978836447000504,0.7181023955345154,0.20210927724838257,0,0,0.591410756111145,0.0020827334374189377,0.4065064787864685,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

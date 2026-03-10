@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "25">
+	
+	<name>Van Kleiss</name>
+	
+	<specialAnimations>
+	
+		<anim>
+			<id>206</id>
+			<name>ANIM_VANKLEISS_UPPERCUT_STRONG</name>
+			<start>845</start>
+			<end>858</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>207</id>
+			<name>ANIM_VANKLEISS_UPPERCUT_STRONG</name>
+			<start>866</start>
+			<end>879</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>208</id>
+			<name>ANIM_VANKLEISS_UPPERCUT_MISS</name>
+			<start>884</start>
+			<end>901</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>209</id>
+			<name>ANIM_VANKLEISS_GRAB_LIGHT</name>
+			<start>906</start>
+			<end>938</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vk_grab">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>210</id>
+			<name>ANIM_VANKLEISS_GRAB_STRONG</name>
+			<start>949</start>
+			<end>979</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vk_grab">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>211</id>
+			<name>ANIM_VANKLEISS_GRAB_THROW</name>
+			<start>989</start>
+			<end>1057</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vk_grabthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>212</id>
+			<name>ANIM_VANKLEISS_EVOTHROW</name>
+			<start>1072</start>
+			<end>1107</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>26</id>
+			<name>PROJ_EVO</name>
+			<start>1</start>
+			<end>1</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_evo_proj">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>0.882041315207649,0.803128635904194,-0.685169951111842,0,0,-0.0334581162292467,0.790948246724007,0.24250986950524,0,0,0.678963215871403,-0.292314917755945,0.613351701884542,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

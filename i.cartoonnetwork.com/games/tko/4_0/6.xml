@@ -1,0 +1,178 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "6">
+	
+	<name>Van Rook</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>71</id>
+			<name>ANIM_VANROOK_GRENADE_LIGHT</name>
+			<start>840</start>
+			<end>865</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>72</id>
+			<name>ANIM_VANROOK_GRENADE_STRONG</name>
+			<start>870</start>
+			<end>895</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>73</id>
+			<name>ANIM_VANROOK_TELEPORT_START_LIGHT</name>
+			<start>905</start>
+			<end>907</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vanrook_teleport_back">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>74</id>
+			<name>ANIM_VANROOK_TELEPORT_END_LIGHT</name>
+			<start>922</start>
+			<end>939</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>75</id>
+			<name>ANIM_VANROOK_TELEPORT_START_STRONG</name>
+			<start>948</start>
+			<end>955</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vanrook_teleport_fwd">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>76</id>
+			<name>ANIM_VANROOK_TELEPORT_END_STRONG</name>
+			<start>965</start>
+			<end>982</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>77</id>
+			<name>ANIM_VANROOK_AIRSTRIKE</name>
+			<start>995</start>
+			<end>1038</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+			<sound linkage = "sfx_vanrook_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>false</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>12</id>
+			<name>EXPLOSION</name>
+			<start>1</start>
+			<end>15</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+			<sound linkage = "sfx_vanrook_bomb_explode">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>30</id>
+			<name>EXPLOSION_SILENT</name>
+			<start>1</start>
+			<end>15</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>2</id>
+			<name>PROJ_GRENADE</name>
+			<start>1</start>
+			<end>2</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_vanrook_bomb_fall">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>false</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>7</id>
+			<name>PROJ_SUPERGRENADE</name>
+			<start>1</start>
+			<end>2</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+			<!--
+			<sound linkage = "sfx_vanrook_bomb_fall">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>false</force>
+			</sound>
+			-->
+			
+		</anim>
+		
+	</projectileAnimations>
+	
+	<color>-1.3146840333938599,2.136579990386963,0.19810424745082855,0,3.830003023147583,0.5315158367156982,0.29037967324256897,0.19810444116592407,0,3.830003261566162,0.5315160155296326,2.1365795135498047,-1.6480954885482788,0,3.830003023147583,0,0,0,1,0</color>
+	
+	<tint>1,.7,.38,1,0,0,0,0</tint>
+	
+	
+</robot>

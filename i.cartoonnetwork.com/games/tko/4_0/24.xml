@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "24">
+	
+	<name>Bobo Haha</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>197</id>
+			<name>ANIM_BOBO_BLASTERS_LIGHT</name>
+			<start>841</start>
+			<end>870</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>198</id>
+			<name>ANIM_BOBO_BLASTERS_STRONG_START</name>
+			<start>873</start>
+			<end>875</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_jump">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>199</id>
+			<name>ANIM_BOBO_BLASTERS_STRONG_HOLD</name>
+			<start>880</start>
+			<end>885</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>200</id>
+			<name>ANIM_BOBO_BLASTERS_STRONG_DROP</name>
+			<start>891</start>
+			<end>894</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>201</id>
+			<name>ANIM_BOBO_BLASTERS_STRONG_END</name>
+			<start>902</start>
+			<end>902</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>202</id>
+			<name>ANIM_BOBO_MONKEYSWING_START</name>
+			<start>917</start>
+			<end>923</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_boboSwing">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>203</id>
+			<name>ANIM_BOBO_MONKEYSWING_SWING</name>
+			<start>938</start>
+			<end>938</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>204</id>
+			<name>ANIM_BOBO_MONKEYSWING_RECOVER</name>
+			<start>952</start>
+			<end>969</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>205</id>
+			<name>ANIM_BOBO_GRENADES</name>
+			<start>979</start>
+			<end>1022</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+			<sound linkage = "sfx_bobo_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>false</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>57</id>
+			<name>EFFECT_BOBO_BLASTERS_LIGHT</name>
+			<start>1</start>
+			<end>13</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bobo_blaster">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>58</id>
+			<name>EFFECT_BOBO_BLASTERS_STRONG</name>
+			<start>17</start>
+			<end>29</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bobo_blaster">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>70</id>
+			<name>EFFECT_BOBO_SWING</name>
+			<start>30</start>
+			<end>60</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>71</id>
+			<name>EFFECT_BOBO_EXPLOSION</name>
+			<start>61</start>
+			<end>74</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+			<sound linkage = "sfx_bobo_bomb_explode">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>72</id>
+			<name>EFFECT_BOBO_EXPLOSION_SILENT</name>
+			<start>61</start>
+			<end>74</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>25</id>
+			<name>PROJ_BOBO_BOMBS</name>
+			<start>1</start>
+			<end>2</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+			<!--
+			<sound linkage = "sfx_vanrook_bomb_fall">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>false</force>
+			</sound>
+			-->
+			
+		</anim>
+	</projectileAnimations>
+	
+	<color>1.02538838308688,0.287664178615929,-0.313052561702806,0,-20,-0.0360634087229691,0.93492957685839,0.101133831864579,0,-20,0.282015324569903,-0.201424626339778,0.919409301769875,0,-20,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

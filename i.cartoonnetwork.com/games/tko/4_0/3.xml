@@ -1,0 +1,93 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "3">
+	
+	<name>Kevin</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>53</id>
+			<name>ANIM_KEVIN_UPPERCUT_LIGHT</name>
+			<start>840</start>
+			<end>853</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>54</id>
+			<name>ANIM_KEVIN_UPPERCUT_STRONG</name>
+			<start>870</start>
+			<end>883</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>55</id>
+			<name>ANIM_KEVIN_SKY_THROW_START</name>
+			<start>888</start>
+			<end>909</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>56</id>
+			<name>ANIM_KEVIN_SKY_THROW_END</name>
+			<start>913</start>
+			<end>945</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>57</id>
+			<name>ANIM_KEVIN_HOP_LIGHT_START</name>
+			<start>950</start>
+			<end>955</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>58</id>
+			<name>ANIM_KEVIN_HOP_STRONG_START</name>
+			<start>962</start>
+			<end>970</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>59</id>
+			<name>ANIM_KEVIN_HOP_END</name>
+			<start>983</start>
+			<end>998</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		
+	</projectileAnimations>
+	
+	<color>2.6975748538970947,-0.5485671758651733,-0.869007408618927,0,15.500001907348633,-0.6829690337181091,1.8944807052612305,0.06848834455013275,0,15.500000953674316,0.03699054569005966,-1.6556017398834229,2.898611307144165,0,15.50000286102295,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

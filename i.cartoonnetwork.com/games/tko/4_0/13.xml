@@ -1,0 +1,167 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "13">
+	
+	<name>Flapjack</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>119</id>
+			<name>ANIM_FLAPJACK_BUBBY_LIGHT</name>
+			<start>841</start>
+			<end>864</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_knockdown">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>120</id>
+			<name>ANIM_FLAPJACK_BUBBY_STRONG</name>
+			<start>873</start>
+			<end>896</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_knockdown">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>121</id>
+			<name>ANIM_FLAPJACK_FALLKICK_START</name>
+			<start>907</start>
+			<end>908</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_rush">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>122</id>
+			<name>ANIM_FLAPJACK_FALLKICK_FLY</name>
+			<start>922</start>
+			<end>922</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>123</id>
+			<name>ANIM_FLAPJACK_FALLKICK_END</name>
+			<start>934</start>
+			<end>947</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_heavy_kick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>124</id>
+			<name>ANIM_FLAPJACK_SUPER</name>
+			<start>973</start>
+			<end>1026</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>34</id>
+			<name>SHIP_BREAK</name>
+			<start>18</start>
+			<end>35</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_flapjack_ship_explode">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>35</id>
+			<name>BUBBY_HIT</name>
+			<start>1</start>
+			<end>17</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+	</effectAnimations>
+	
+	<projectileAnimations>
+		
+		<anim>
+			<id>12</id>
+			<name>PROJ_BUBBY</name>
+			<start>1</start>
+			<end>5</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_flapjack_bubby">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>13</id>
+			<name>PROJ_SHIP</name>
+			<start>10</start>
+			<end>10</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_flapjack_ship_fall">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</projectileAnimations>
+	
+	<color>0.814480185508728,0.7626376152038574,-0.5771178603172302,0,0,0.009960290044546127,0.7720181345939636,0.21802151203155518,0,0,0.6205958127975464,-0.17629659175872803,0.5557007193565369,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

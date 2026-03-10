@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "4">
+	
+	<name>Munya</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>60</id>
+			<name>ANIM_MUNYA_RUSH_PUNCH_START</name>
+			<start>840</start>
+			<end>841</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_rush">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>61</id>
+			<name>ANIM_MUNYA_RUSH_PUNCH_FLY</name>
+			<start>860</start>
+			<end>860</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>62</id>
+			<name>ANIM_MUNYA_RUSH_PUNCH_END</name>
+			<start>880</start>
+			<end>897</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_heavy_punch">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>63</id>
+			<name>ANIM_MUNYA_VERT_KICK_START</name>
+			<start>910</start>
+			<end>913</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_jump">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>64</id>
+			<name>ANIM_MUNYA_VERT_KICK_END</name>
+			<start>930</start>
+			<end>933</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>65</id>
+			<name>ANIM_MUNYA_WEB</name>
+			<start>950</start>
+			<end>985</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>9</id>
+			<name>WEB_FREEZE</name>
+			<start>1</start>
+			<end>56</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_munya_hold">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>10</id>
+			<name>WEB_HIT</name>
+			<start>57</start>
+			<end>71</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_munya_shatter">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>1</id>
+			<name>PROJ_WEB</name>
+			<start>1</start>
+			<end>8</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_munya_web">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>1.4611183404922485,1.8192538022994995,-2.280372142791748,0,0,-0.5361889004707336,0.8751571774482727,0.6610317230224609,0,0,1.7226927280426025,-1.6540801525115967,0.9313873648643494,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

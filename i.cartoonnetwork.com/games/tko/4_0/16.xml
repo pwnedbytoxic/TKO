@@ -1,0 +1,128 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "16">
+	
+	<name>Generator Rex</name>
+	
+
+	<specialAnimations>
+		
+		<anim>
+			<id>144</id>
+			<name>ANIM_GENREX_HANDS_LIGHT</name>
+			<start>841</start>
+			<end>865</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_genRex_punchFist">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>145</id>
+			<name>ANIM_GENREX_HANDS_STRONG</name>
+			<start>871</start>
+			<end>902</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_genRex_punchFist">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>146</id>
+			<name>ANIM_GENREX_DEBRIS_LIGHT</name>
+			<start>912</start>
+			<end>935</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_genRex_shootGun">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>147</id>
+			<name>ANIM_GENREX_DEBRIS_STRONG</name>
+			<start>952</start>
+			<end>975</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_genRex_shootGun">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>148</id>
+			<name>ANIM_GENREX_SUPER</name>
+			<start>991</start>
+			<end>1032</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_genRex_swingSword">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>43</id>
+			<name>GENREX_DEBRIS</name>
+			<start>1</start>
+			<end>3</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_genRex_projectileImpact">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</effectAnimations>
+
+	<projectileAnimations>
+		<anim>
+			<id>15</id>
+			<name>PROJ_DEBRIS</name>
+			<start>1</start>
+			<end>1</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>0.9701143503189087,-0.2145811915397644,0.35446682572364807,0,-0.32500073313713074,0.07128731906414032,1.1393953561782837,-0.10068263858556747,0,-0.32500073313713074,-0.27824944257736206,0.32287850975990295,1.065370798110962,0,-0.32500073313713074,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

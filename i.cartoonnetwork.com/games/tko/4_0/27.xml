@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "27">
+	
+	<name>Upgrade Rex</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>220</id>
+			<name>ANIM_UREX_WHIP_LIGHT</name>
+			<start>840</start>
+			<end>860</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_urex_whip">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>221</id>
+			<name>ANIM_UREX_WHIP_STRONG</name>
+			<start>870</start>
+			<end>893</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_urex_whip">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>222</id>
+			<name>ANIM_UREX_STOMP_START</name>
+			<start>902</start>
+			<end>905</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>223</id>
+			<name>ANIM_UREX_STOMP_FLY</name>
+			<start>917</start>
+			<end>917</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>224</id>
+			<name>ANIM_UREX_STOMP_ATTACK</name>
+			<start>923</start>
+			<end>923</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_urex_stomp">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>225</id>
+			<name>ANIM_UREX_STOMP_HIT</name>
+			<start>934</start>
+			<end>942</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_urex_stomp">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>226</id>
+			<name>ANIM_UREX_STOMP_MISS</name>
+			<start>950</start>
+			<end>971</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>227</id>
+			<name>ANIM_UREX_SUPER</name>
+			<start>979</start>
+			<end>1014</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>63</id>
+			<name>BOLA_FREEZE</name>
+			<start>1</start>
+			<end>56</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bola_freeze">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>64</id>
+			<name>BOLA_HIT</name>
+			<start>57</start>
+			<end>71</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bola_hit">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>28</id>
+			<name>PROJ_BOLA</name>
+			<start>1</start>
+			<end>20</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_bola_proj">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>2.10788020474083,-0.390553371370954,-0.71732683336988,0,0,-0.53728331112308,1.47103548544508,0.0662478256780011,0,0,0.0644709687402807,-1.31583145761247,2.25136048887218,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

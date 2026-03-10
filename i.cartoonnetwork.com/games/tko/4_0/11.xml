@@ -1,0 +1,205 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "11">
+	
+	<name>Chef</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>103</id>
+			<name>ANIM_CHEF_FOODTHROW_LIGHT1</name>
+			<start>841</start>
+			<end>863</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>104</id>
+			<name>ANIM_CHEF_FOODTHROW_LIGHT2</name>
+			<start>868</start>
+			<end>890</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>105</id>
+			<name>ANIM_CHEF_FOODTHROW_LIGHT3</name>
+			<start>895</start>
+			<end>917</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>106</id>
+			<name>ANIM_CHEF_FOODTHROW_STRONG1</name>
+			<start>921</start>
+			<end>943</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>107</id>
+			<name>ANIM_CHEF_FOODTHROW_STRONG2</name>
+			<start>948</start>
+			<end>970</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>108</id>
+			<name>ANIM_CHEF_FOODTHROW_STRONG3</name>
+			<start>975</start>
+			<end>997</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>109</id>
+			<name>ANIM_CHEF_DASHKICK_START</name>
+			<start>1002</start>
+			<end>1005</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_rush">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>110</id>
+			<name>ANIM_CHEF_DASHKICK_FLY</name>
+			<start>1018</start>
+			<end>1018</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>111</id>
+			<name>ANIM_CHEF_DASHKICK_END</name>
+			<start>1027</start>
+			<end>1044</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_heavy_kick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>112</id>
+			<name>ANIM_CHEF_SUPER</name>
+			<start>1055</start>
+			<end>1090</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+	</effectAnimations>
+
+	<projectileAnimations>
+		<anim>
+			<id>8</id>
+			<name>PROJ_FOOD1</name>
+			<start>1</start>
+			<end>7</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>true</shouldRotate>
+			<sound linkage = "sfx_chef_foodthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>9</id>
+			<name>PROJ_FOOD2</name>
+			<start>14</start>
+			<end>21</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>true</shouldRotate>
+			<sound linkage = "sfx_chef_foodthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>10</id>
+			<name>PROJ_FOOD3</name>
+			<start>29</start>
+			<end>36</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>true</shouldRotate>
+			<sound linkage = "sfx_chef_foodthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>11</id>
+			<name>PROJ_SINK</name>
+			<start>40</start>
+			<end>40</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_chef_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>0.7611150145530701,0.6875439882278442,-0.4486589729785919,0,0,0.05157579481601715,0.7634165287017822,0.18500764667987823,0,0,0.5382067561149597,-0.060716379433870316,0.5225096940994263,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

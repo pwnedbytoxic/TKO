@@ -1,0 +1,132 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "9">
+	
+	<name>Vilgax</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>90</id>
+			<name>ANIM_VILGAX_LASER_LIGHT</name>
+			<start>841</start>
+			<end>870</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_laser_prep">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>91</id>
+			<name>ANIM_VILGAX_LASER_STRONG</name>
+			<start>873</start>
+			<end>902</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_laser_prep">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>92</id>
+			<name>ANIM_VILGAX_SPINKICK_LIGHT</name>
+			<start>905</start>
+			<end>932</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vilgax_spinkick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>93</id>
+			<name>ANIM_VILGAX_SPINKICK_STRONG</name>
+			<start>936</start>
+			<end>963</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vilgax_spinkick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>94</id>
+			<name>ANIM_VILGAX_SUPERBEAM</name>
+			<start>967</start>
+			<end>1006</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>27</id>
+			<name>VILGAX_BEAM</name>
+			<start>1</start>
+			<end>34</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_vilgax_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		
+		<anim>
+			<id>5</id>
+			<name>PROJ_LASER</name>
+			<start>1</start>
+			<end>3</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_laser">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</projectileAnimations>
+	
+	<color>0.8319243788719177,0.7679216861724854,-0.5998460054397583,0,0,-0.00033762131351977587,0.7776256799697876,0.22271190583705902,0,0,0.6313543915748596,-0.20338955521583557,0.5720352530479431,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

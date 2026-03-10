@@ -1,0 +1,187 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "14">
+	
+	<name>Johnny Test</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>125</id>
+			<name>ANIM_JOHNNY_HANDS_LIGHT</name>
+			<start>841</start>
+			<end>868</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>126</id>
+			<name>ANIM_JOHNNY_HANDS_STRONG_START</name>
+			<start>873</start>
+			<end>875</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bot_jump">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>127</id>
+			<name>ANIM_JOHNNY_HANDS_STRONG_HOLD</name>
+			<start>880</start>
+			<end>885</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>128</id>
+			<name>ANIM_JOHNNY_HANDS_STRONG_DROP</name>
+			<start>891</start>
+			<end>894</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>129</id>
+			<name>ANIM_JOHNNY_HANDS_STRONG_END</name>
+			<start>902</start>
+			<end>902</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>130</id>
+			<name>ANIM_JOHNNY_RUSHKICK_START</name>
+			<start>925</start>
+			<end>927</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_johnny_dash">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>131</id>
+			<name>ANIM_JOHNNY_RUSHKICK_FLY</name>
+			<start>939</start>
+			<end>939</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>132</id>
+			<name>ANIM_JOHNNY_RUSHKICK_END</name>
+			<start>955</start>
+			<end>971</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_johnny_doublekick">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>133</id>
+			<name>ANIM_JOHNNY_RUSHKICK_MISS</name>
+			<start>984</start>
+			<end>1001</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>134</id>
+			<name>ANIM_JOHNNY_SUPER</name>
+			<start>1018</start>
+			<end>1077</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>36</id>
+			<name>JOHNNY_HANDS_LIGHT</name>
+			<start>40</start>
+			<end>52</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_johnny_hands">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>37</id>
+			<name>JOHNNY_HANDS_STRONG</name>
+			<start>56</start>
+			<end>68</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_johnny_hands">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>38</id>
+			<name>JOHNNY_BEAM</name>
+			<start>1</start>
+			<end>38</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_johnny_poot">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</effectAnimations>
+	
+	<projectileAnimations>
+		
+	</projectileAnimations>
+	
+	<color>0.8296698331832886,0.9079388380050659,-0.7376087307929993,0,0,-0.024660460650920868,0.7583047151565552,0.2663557231426239,0,0,0.7463444471359253,-0.2775847613811493,0.5312402248382568,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

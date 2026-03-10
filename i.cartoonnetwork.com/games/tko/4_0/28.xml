@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "28">
+	
+	<name>Shocksquatch</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>228</id>
+			<name>ANIM_SHOCK_ELEC_LIGHT</name>
+			<start>841</start>
+			<end>864</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shock_elecstrong">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>229</id>
+			<name>ANIM_SHOCK_ELEC_STRONG</name>
+			<start>873</start>
+			<end>896</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shock_elecstrong">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>230</id>
+			<name>ANIM_SHOCK_WAVES_LIGHT</name>
+			<start>903</start>
+			<end>922</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>231</id>
+			<name>ANIM_SHOCK_WAVES_STRONG</name>
+			<start>932</start>
+			<end>968</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>232</id>
+			<name>ANIM_SHOCK_SUPER</name>
+			<start>978</start>
+			<end>1022</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shock_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		<anim>
+			<id>65</id>
+			<name>EFFECT_SHOCKBALL</name>
+			<start>1</start>
+			<end>4</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shockball">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>66</id>
+			<name>EFFECT_SHOCKWAVES_LIGHT</name>
+			<start>5</start>
+			<end>30</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shockwaves_light">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>67</id>
+			<name>EFFECT_SHOCKWAVES_STRONG</name>
+			<start>31</start>
+			<end>69</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shockwaves_strong">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>68</id>
+			<name>EFFECT_SHOCK_STUN</name>
+			<start>71</start>
+			<end>127</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shock_stun">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>69</id>
+			<name>EFFECT_SHOCK_HIT</name>
+			<start>129</start>
+			<end>142</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_shock_hit">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+
+	<projectileAnimations>
+		<anim>
+			<id>29</id>
+			<name>PROJ_SHOCKBALL</name>
+			<start>1</start>
+			<end>1</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>30</id>
+			<name>PROJ_SHOCK_SUPER</name>
+			<start>11</start>
+			<end>18</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_shock_proj_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</projectileAnimations>
+	
+	<color>0.352557013351124,-0.235182124875805,0.882625111524681,0,10,0.252584323795472,0.96232929478123,-0.214913618576702,0,10,-0.590281918148612,1.0608380105866,0.529443907562008,0,10,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+</robot>

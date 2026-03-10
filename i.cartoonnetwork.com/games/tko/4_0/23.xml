@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "23">
+	
+	<name>Agent Six</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>186</id>
+			<name>ANIM_AGT_SIX_SWORDTOSS_LIGHT1</name>
+			<start>841</start>
+			<end>863</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>187</id>
+			<name>ANIM_AGT_SIX_SWORDTOSS_LIGHT2</name>
+			<start>868</start>
+			<end>890</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>188</id>
+			<name>ANIM_AGT_SIX_SWORDTOSS_LIGHT3</name>
+			<start>895</start>
+			<end>917</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>189</id>
+			<name>ANIM_AGT_SIX_SWORDTOSS_STRONG1</name>
+			<start>921</start>
+			<end>943</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>190</id>
+			<name>ANIM_AGT_SIX_SWORDTOSS_STRONG2</name>
+			<start>948</start>
+			<end>970</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>191</id>
+			<name>ANIM_AGT_SIX_SWORDTOSS_STRONG3</name>
+			<start>975</start>
+			<end>997</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>192</id>
+			<name>ANIM_AGT_SIX_SLIDEKICK_START</name>
+			<start>1002</start>
+			<end>1004</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_six_kickstart">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>193</id>
+			<name>ANIM_AGT_SIX_SLIDEKICK_FLY</name>
+			<start>1016</start>
+			<end>1016</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>194</id>
+			<name>ANIM_AGT_SIX_SLIDEKICK_END</name>
+			<start>1032</start>
+			<end>1048</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_six_kickend">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>195</id>
+			<name>ANIM_AGT_SIX_SLIDEKICK_MISS</name>
+			<start>1061</start>
+			<end>1078</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>196</id>
+			<name>ANIM_AGT_SIX_CHAINOFSWORDS_FIREBEAM</name>
+			<start>1087</start>
+			<end>1156</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_six_chainofswords">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+	
+		<anim>
+			<id>55</id>
+			<name>EFFECT_SWORD SUPER1 </name>
+			<start>1</start>
+			<end>18</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_six_swordsuper1">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>56</id>
+			<name>EFFECT_SWORD SUPER2</name>
+			<start>21</start>
+			<end>36</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_six_swordsuper2">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+
+	<projectileAnimations>
+		<anim>
+			<id>22</id>
+			<name>SIX_SWORD1</name>
+			<start>1</start>
+			<end>7</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>true</shouldRotate>
+			<sound linkage = "sfx_six_swordthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>23</id>
+			<name>SIX_SWORD2</name>
+			<start>14</start>
+			<end>21</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>true</shouldRotate>
+			<sound linkage = "sfx_six_swordthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>24</id>
+			<name>SIX_SWORD3</name>
+			<start>29</start>
+			<end>36</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>true</shouldRotate>
+			<sound linkage = "sfx_six_swordthrow">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+			
+		
+	</projectileAnimations>
+	
+	<color>1.75279234420227,-1.31534387930121,0.682551535098941,0,-18.82,-0.262595676011224,1.72059941466232,-0.338003738651095,0,-18.82,-1.04634167484486,-0.110229063890352,2.27657073873521,0,-18.82,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

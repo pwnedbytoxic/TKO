@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "26">
+	
+	<name>Clockwork</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>213</id>
+			<name>ANIM_TIMEBALL_LIGHT</name>
+			<start>840</start>
+			<end>865</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>214</id>
+			<name>ANIM_TIMEBALL_STRONG</name>
+			<start>872</start>
+			<end>897</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>215</id>
+			<name>ANIM_ CLOCKWORK_TIMEWALK_START_LIGHT</name>
+			<start>905</start>
+			<end>907</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_clock_timewalk_light">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>216</id>
+			<name>ANIM_ CLOCKWORK_TIMEWALK_END_LIGHT</name>
+			<start>922</start>
+			<end>939</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>217</id>
+			<name>ANIM_ CLOCKWORK_TIMEWALK_START_STRONG</name>
+			<start>948</start>
+			<end>955</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_clock_timewalk_strong">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>218</id>
+			<name>ANIM_ CLOCKWORK_TIMEWALK_END_STRONG</name>
+			<start>965</start>
+			<end>982</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>219</id>
+			<name>ANIM_ CLOCKWORK_TIMEBEAM</name>
+			<start>995</start>
+			<end>1034</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>59</id>
+			<name>TELEPORT</name>
+			<start>1</start>
+			<end>15</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>60</id>
+			<name>TIME_BEAM</name>
+			<start>90</start>
+			<end>124</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_clock_timebeam">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>61</id>
+			<name>TIME_FREEZE</name>
+			<start>16</start>
+			<end>72</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_clock_timefreeze">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>62</id>
+			<name>TIME_HIT</name>
+			<start>74</start>
+			<end>87</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_clock_timehit">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>27</id>
+			<name>TIME_BALL</name>
+			<start>1</start>
+			<end>10</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>8</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_clock_timeball">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</projectileAnimations>
+	
+	<color>0.422036588993915,-0.261708163705874,0.839671574711959,0,-30,0.230341632741175,0.978743556529821,-0.209085189270996,0,-30,-0.575061992778353,0.976708163705874,0.59835382907248,0,-30,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+
+</robot>

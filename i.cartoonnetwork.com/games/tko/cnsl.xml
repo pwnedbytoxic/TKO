@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sfServers>
+	
+	<!-- PRODUCTION -->
+	<!-- <server name="ctn8sf1">157.166.228.149</server>-->
+	<!-- <server name="ctn8sf2">157.166.228.150</server>-->
+	<!-- <server name="ctn8sf3">157.166.228.151</server>-->
+	<!-- <server name="ctn8sf4">157.166.228.152</server>-->
+	
+	<!-- DMT STAGING -->
+	<!-- <server name="ctnp1sfdev2">10.189.140.25</server> -->
+	
+	<!-- DMT DEV -->
+	<!--<server name="ctnp1sfdev1">10.189.136.104</server>-->
+	
+	<!-- LOCAL FARM -->
+	<!--<server name="sfs1">10.189.49.189</server>-->
+	<!--<server name="sfs2">10.189.49.155</server>-->
+	<!--<server name="sfs3">10.189.49.129</server>-->
+	
+	
+	<!-- local -->
+	<server name="local">127.0.0.1</server>
+	
+</sfServers>

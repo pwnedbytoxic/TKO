@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<game version = "4.0" characterPackURL = "config.zip">
+
+	<characters>
+		<char buttonSlot = "1" id = "1" name = "Big Chill" show = "Ben10: Alien Force" superName1 = "cold rush" superName2 = "chill out"></char>
+		<char buttonSlot = "2" id = "2" name = "Swampfire" show = "Ben10: Alien Force" superName1 = "fireball" superName2 = "vinespike"></char>
+		<char buttonSlot = "3" id = "3" name = "Kevin" show = "Ben10: Alien Force" superName1 = "uppercut" superName2 = "leap kick"></char>
+		<char buttonSlot = "4" id = "4" name = "Munya" show = "The Secret Saturdays" superName1 = "dash punch" superName2 = "aerospike"></char>
+		<char buttonSlot = "5" id = "5" name = "Zak" show = "The Secret Saturdays" superName1 = "whip claw" superName2 = "cyclone kick"></char>
+		<char buttonSlot = "6" id = "6" name = "Van Rook" show = "The Secret Saturdays" superName1 = "concussion grenade" superName2 = "sneak attack"></char>
+		
+		<char buttonSlot = "7" id = "7" name = "DNAlien" show = "Ben10: Alien Force" superName1 = "goo spit" superName2 = "tentacle grab"></char>
+		<char buttonSlot = "8" id = "8" name = "Duncan" show = "Total Drama Action" superName1 = "ground pound" superName2 = "hooligan kick"></char>
+		<char buttonSlot = "9" id = "9" name = "Vilgax" show = "Ben10: Alien Force" superName1 = "ruby ray" superName2 = "cyber kick"></char>
+		<char buttonSlot = "10" id = "10" name = "Chowder" show = "Chowder" superName1 = "chowder charge" superName2 = "kimchi cover"></char>
+		<char buttonSlot = "11" id = "11" name = "Chef" show = "Total Drama Action" superName1 = "everything but" superName2 = "grease kick"></char>
+		<char buttonSlot = "12" id = "12" name = "Shnitzel" show = "Chowder" superName1 = "ground cake" superName2 = "rock crusher"></char>
+		
+		<char buttonSlot = "13" id = "13" name = "Flapjack" show = "The Marvelous Misadventures of Flapjack" superName1 = "hey, bubbie!" superName2 = "flap flop"></char>
+		<char buttonSlot = "17" id = "14" name = "Johnny Test" show = "Johnny Test" superName1 = "hurricane hands" superName2 = "super slide"></char>
+		<char buttonSlot = "24" id = "16" name = "Generator Rex" show = "Generator Rex" superName1 = "smakhands" superName2 = "slam cannon"></char>
+		<char buttonSlot = "18" id = "17" name = "Finn" show = "Adventure Time" superName1 = "look out below" superName2 = "sidekick swing"></char>
+		
+		<char buttonSlot = "19" id = "19" name = "Rath" show = "Ben10: Ultimate Alien" superName1 = "shockwave punch" superName2 = "tiger claw"></char>
+		<char buttonSlot = "14" id = "20" name = "Armodrillo" show = "Ben10: Ultimate Alien" superName1 = "earth drill" superName2 = "terra firma"></char>
+		<char buttonSlot = "21" id = "15" name = "Humungousaur" show = "Ben10: Ultimate Alien" superName1 = "humungo-slam" superName2 = "seismic stomp"></char>
+		<char buttonSlot = "15" id = "21" name = "Ult. Echo Echo" show = "Ben10: Ultimate Alien" superName1 = "sonic disk" superName2 = "sound barrier"></char>
+		<char buttonSlot = "16" id = "22" name = "Ult. Big Chill" show = "Ben10: Ultimate Alien" superName1 = "ice flames" superName2 = "freezing fire cloud"></char>
+		
+		<char buttonSlot = "20" id = "18" name = "Manus" show = "Symbionic Titan" superName1 = "rapid fire" superName2 = "lance launcher"></char>
+		
+		<char buttonSlot = "25" id = "23" name = "Agent Six" show = "Generator Rex" superName1 = "Katana Throw" superName2 = "Sliding Strike"></char>
+		<char buttonSlot = "26" id = "24" name = "Bobo Haha" show = "Generator Rex" superName1 = "Bobo Blasters" superName2 = "Monkey Business"></char>
+		<char buttonSlot = "27" id = "25" name = "Van Kleiss" show = "Generator Rex" superName1 = "Abysus Arm" superName2 = "Nanite Grapple"></char>
+		
+		<char buttonSlot = "22" id = "26" name = "Clockwork" show = "Ben 10: Ultimate Alien" superName1 = "Time Stop" superName2 = "Temporal Jump"></char>
+		<char buttonSlot = "29" id = "27" name = "Upgrade Rex" show = "Generator Rex" superName1 = "Blastcaster" superName2 = "Funchucks"></char>
+		<char buttonSlot = "23" id = "28" name = "Shocksquatch" show = "Ben 10: Ultimate Alien" superName1 = "Ball Lightening" superName2 = "Electrosphere"></char>
+		
+		
+		<!--<char buttonSlot = "29" id = "9999" name = "Random" show = "All" superName1 = "" superName2 = ""></char> -->
+		<!--<char buttonSlot = "25" id = "0" name = "Blank" show = "None" superName1 = "" superName2 = ""></char> -->
+		<!--<char buttonSlot = "26" id = "0" name = "Blank" show = "None" superName1 = "" superName2 = ""></char>	-->
+	</characters>
+	
+</game>

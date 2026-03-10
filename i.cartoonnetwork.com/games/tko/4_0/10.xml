@@ -1,0 +1,183 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "10">
+	
+	<name>Chowder</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>95</id>
+			<name>ANIM_CHOWDER_HEADBUTT_START_LIGHT</name>
+			<start>841</start>
+			<end>843</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_headbutt_start">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>96</id>
+			<name>ANIM_CHOWDER_HEADBUTT_START_STRONG</name>
+			<start>855</start>
+			<end>860</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_headbutt_start">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>97</id>
+			<name>ANIM_CHOWDER_HEADBUTT_FLY</name>
+			<start>872</start>
+			<end>872</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>98</id>
+			<name>ANIM_CHOWDER_HEADBUTT_MISS</name>
+			<start>885</start>
+			<end>904</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_headbutt_end">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>99</id>
+			<name>ANIM_CHOWDER_HEADBUTT_HIT</name>
+			<start>909</start>
+			<end>928</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_headbutt_end">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>100</id>
+			<name>ANIM_CHOWDER_KIMCHI_LIGHT</name>
+			<start>939</start>
+			<end>958</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>101</id>
+			<name>ANIM_CHOWDER_KIMCHI_STRONG</name>
+			<start>967</start>
+			<end>1003</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>102</id>
+			<name>ANIM_CHOWDER_SUPER</name>
+			<start>1012</start>
+			<end>1056</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_super_celebration">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		
+	</specialAnimations>
+	
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>28</id>
+			<name>CHOWDER_KIMCHI_LIGHT</name>
+			<start>1</start>
+			<end>22</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_kimchi_defense_short">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>29</id>
+			<name>CHOWDER_KIMCHI_STRONG</name>
+			<start>27</start>
+			<end>66</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_chowder_kimchi_defense_long">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+
+	<projectileAnimations>
+		<anim>
+			<id>6</id>
+			<name>PROJ_KIMCHI</name>
+			<start>1</start>
+			<end>7</end>
+			<loop>true</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_chowder_kimchi_super">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>1.0185950994491577,0.35263171792030334,-0.37122687697410583,0,0,-0.03974851593375206,0.9184173345565796,0.12133119255304337,0,0,0.33851656317710876,-0.22900167107582092,0.8904851078987122,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

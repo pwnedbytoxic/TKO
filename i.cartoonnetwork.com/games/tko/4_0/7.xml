@@ -1,0 +1,188 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "7">
+	
+	<name>DNAlien</name>
+	
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>78</id>
+			<name>ANIM_DNALIEN_SPIT_LIGHT</name>
+			<start>841</start>
+			<end>861</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>79</id>
+			<name>ANIM_DNALIEN_SPIT_STRONG</name>
+			<start>873</start>
+			<end>897</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>80</id>
+			<name>ANIM_DNALIEN_GRAB_LIGHT</name>
+			<start>905</start>
+			<end>927</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>81</id>
+			<name>ANIM_DNALIEN_GRAB_STRONG</name>
+			<start>935</start>
+			<end>957</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>82</id>
+			<name>ANIM_DNALIEN_SPACESHIP</name>
+			<start>970</start>
+			<end>980</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			<id>20</id>
+			<name>GOO_FREEZE</name>
+			<start>8</start>
+			<end>67</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_dnalien_hold">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>21</id>
+			<name>GOO_HIT</name>
+			<start>1</start>
+			<end>7</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_dnalien_shatter">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>22</id>
+			<name>GOO_GRAB</name>
+			<start>68</start>
+			<end>97</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_dnalien_ground">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>23</id>
+			<name>GRAB_FREEZE</name>
+			<start>98</start>
+			<end>157</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_dnalien_grab">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>24</id>
+			<name>GRAB_HIT</name>
+			<start>158</start>
+			<end>162</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_dnalien_tentbreak">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+		<anim>
+			<id>3</id>
+			<name>PROJ_GOO</name>
+			<start>1</start>
+			<end>5</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_dnalien_spit">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>4</id>
+			<name>PROJ_SPACESHIP</name>
+			<start>7</start>
+			<end>72</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<loopStart>-1</loopStart>
+			<shouldRotate>false</shouldRotate>
+			<sound linkage = "sfx_dnalien_spaceship">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+	</projectileAnimations>
+	
+	<color>0.8319243788719177,0.7679216861724854,-0.5998460054397583,0,0,-0.00033762131351977587,0.7776256799697876,0.22271190583705902,0,0,0.6313543915748596,-0.20338955521583557,0.5720352530479431,0,0,0,0,0,1,0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>

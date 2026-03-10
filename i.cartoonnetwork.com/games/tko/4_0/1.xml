@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<robot charId = "1">
+	
+	<name>Big Chill</name>
+	
+	<specialAnimations>
+		
+		<anim>
+			<id>42</id>
+			<name>FREEZE_CLOUD_LIGHT</name>
+			<start>840</start>
+			<end>866</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>43</id>
+			<name>FREEZE_CLOUD_STRONG</name>
+			<start>870</start>
+			<end>895</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>44</id>
+			<name>ICE_SPIKE</name>
+			<start>900</start>
+			<end>936</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>45</id>
+			<name>PHASE_START</name>
+			<start>940</start>
+			<end>955</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_rush">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>46</id>
+			<name>PHASE_FLY</name>
+			<start>960</start>
+			<end>961</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+		<anim>
+			<id>47</id>
+			<name>PHASE_END</name>
+			<start>970</start>
+			<end>981</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound>null</sound>
+		</anim>
+		
+	</specialAnimations>
+	
+	<effectAnimations>
+		
+		<anim>
+			
+			<id>14</id>
+			<name>ICE_CLOUD</name>
+			<start>1</start>
+			<end>25</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_cloud">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>15</id>
+			<name>ICE_SPIKE</name>
+			<start>40</start>
+			<end>57</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_spike">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>18</id>
+			<name>ICE_FREEZE</name>
+			<start>61</start>
+			<end>117</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_hold">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+		<anim>
+			<id>19</id>
+			<name>ICE_HIT</name>
+			<start>119</start>
+			<end>132</end>
+			<loop>false</loop>
+			<rate>30</rate>
+			<sound linkage = "sfx_bigchill_shatter">
+				<vol>1</vol>
+				<pan>0</pan>
+				<offset>0</offset>
+				<loop>false</loop>
+				<force>true</force>
+			</sound>
+		</anim>
+		
+	</effectAnimations>
+	
+	<projectileAnimations>
+	
+	</projectileAnimations>
+	
+	<color>0.6789631843566895, -0.29231491684913635, 0.6133517026901245, 0, 0, 0.14175117015838623, 1.0233129262924194, -0.16506409645080566, 0, 0, -0.4560413360595703, 0.6268713474273682, 0.8291699290275574, 0, 0, 0, 0, 0, 1, 0</color>
+	
+	<tint>1,1,1,1,0,0,0,0</tint>
+	
+	
+</robot>
