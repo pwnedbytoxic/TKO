@@ -20,6 +20,6 @@
 	
 	
 	<!-- local -->
-	<server name="local">127.0.0.1</server>
+	<server name="local">192.168.1.9</server>
 	
 </sfServers>
