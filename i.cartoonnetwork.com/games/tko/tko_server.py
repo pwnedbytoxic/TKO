@@ -4,6 +4,8 @@ tko_server.py
 
 Combined SmartFox TCP + BlueBox HTTP emulator for Titanic KungFu Offensive (TKO).
 
+Usage example:
+python tko_server.py --bind 0.0.0.0 --advertise-ip 192.168.1.50 --write-cnsl "C:\\path\\to\\tko\\cnsl.xml"
 """
 
 import argparse
@@ -28,16 +30,29 @@ DEFAULT_BIND = "0.0.0.0"
 DEFAULT_TCP_PORT = 9339
 DEFAULT_HTTP_PORT = 8080
 DEFAULT_STATIC_PORT = 8000
+DEFAULT_POLICY_PORT = 843
 
 LOBBY_ROOM_ID = 2
 LOBBY_NAME = "Lobby"
 ROOM_MAX_USERS = 2
 
 WRAPPER_START_DELAY_SECS = 0.20
-ROUND_START_DELAY_SECS = 0.35
-LOAD_FALLBACK_DELAY_SECS = 3.0
+ROUND_LDED_DELAY_SECS = 0.15
+ROUND_RNDS_DELAY_SECS = 0.20
+ROUND_SCNT_DELAY_SECS = 0.45
+ROUND_RNDO_DELAY_SECS = 0.15
 
 HTTP_SEND_ALL_QUEUED = False
+
+# Commands handled specially by server logic.
+CNGAME_SERVER_HANDLED = {
+    "rgq", "pi", "typ", "rdy", "fr", "strt", "rmch", "cu", "ka"
+}
+
+# Commands that are frequent enough that logging every relay would be noisy.
+CNGAME_QUIET_RELAY = {
+    "cu", "fx", "su", "cmbo", "shk", "sups", "adpj", "rmpj", "rmfx"
+}
 
 # ---------- Global state ----------
 STATE_LOCK = threading.RLock()
@@ -58,14 +73,10 @@ ROOMS = {
     }
 }
 
-# HTTP sessions: sid -> {"created":..., "uid":..., "nick":..., "queue":[...]}
 SESSIONS_HTTP = {}
-
-# Active TCP handlers
 TCP_CLIENTS = set()
-
-# Active matches
 MATCHES = {}
+
 
 # ---------- Helpers ----------
 
@@ -82,9 +93,11 @@ def make_uid():
     return random.randint(1000, 9999)
 
 
+def make_rndk():
+    return str(random.randint(100000, 999999))
+
+
 def auto_detect_advertise_ip():
-    # UDP connect does not require the target to reply; it is a common way to discover
-    # the preferred outbound LAN address.
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.connect(("8.8.8.8", 80))
@@ -99,7 +112,6 @@ def auto_detect_advertise_ip():
         except Exception:
             pass
 
-    # Fallback: hostname lookup.
     try:
         ip = socket.gethostbyname(socket.gethostname())
         if ip and ip != "127.0.0.1":
@@ -145,8 +157,30 @@ def parse_progress(value):
     return max(0, min(100, parse_int(s, 0)))
 
 
+def socket_policy_xml(ports="*"):
+    return (
+        '<?xml version="1.0"?>'
+        '<cross-domain-policy>'
+        f'<allow-access-from domain="*" to-ports="{ports}" secure="false" />'
+        '</cross-domain-policy>'
+    )
+
+
+def is_policy_request(text):
+    return "policy-file-request" in text
+
+
 def apiOK_msg():
-    return "<msg t='sys'><body action='apiOK' r='0' /></msg>"
+    # Use explicit open/close body for maximum SFS 1.x compatibility.
+    return "<msg t='sys'><body action='apiOK' r='0'></body></msg>"
+
+
+def rndK_msg():
+    return (
+        "<msg t='sys'><body action='rndK' r='0'>"
+        f"<k><![CDATA[{make_rndk()}]]></k>"
+        "</body></msg>"
+    )
 
 
 def logOK_msg(uid, nick):
@@ -161,7 +195,6 @@ def rmList_msg():
     with STATE_LOCK:
         rooms_xml = ""
         for r in ROOMS.values():
-            # SysHandler.handleRoomList() expects lmb, not limbo.
             ucnt = current_logged_in_count()
             rooms_xml += (
                 "<rm "
@@ -207,26 +240,20 @@ def joinOK_msg(uid, room_id=LOBBY_ROOM_ID, nick="PLAYER", pid=-1):
 
 
 def roundTripRes_msg():
-    return "<msg t='sys'><body action='roundTripRes' r='0' /></msg>"
+    return "<msg t='sys'><body action='roundTripRes' r='0'></body></msg>"
 
 
 def xt_server_msg(cmd, *params):
-    # TKO accepts short-form server XT strings where the client-side data array is:
-    #   [cmd, param1, param2, ...]
     parts = ["xt", str(cmd)]
     parts.extend(str(p) for p in params)
     return "%" + "%".join(parts) + "%"
 
 
 def xt_wrapper_game_join(match_id, my_index):
-    # _gjs params used by GameContainer:
-    #   [0]=_gjs, [1]=gameId, [2]=placeholder/current game token, [3]=myPlayerIndex
     return xt_server_msg("_gjs", match_id, "match", my_index)
 
 
 def xt_wrapper_opponent_join(match_id, opponent_index, opponent_name):
-    # _oj params used by GameContainer:
-    #   [0]=_oj, [1]=unused token, [2]=opponentIndex, [3]=opponentName
     return xt_server_msg("_oj", match_id, opponent_index, opponent_name)
 
 
@@ -311,8 +338,6 @@ def parse_login(xml_text):
 
 
 def parse_client_xt_frame(frame):
-    # Client outbound frames use full SmartFox XT format:
-    #   %xt%<ext>%<cmd>%<roomId>%<param1>%<param2>%...%
     if not frame.startswith("%"):
         return None
     parts = frame[1:].split("%")
@@ -327,6 +352,8 @@ def parse_client_xt_frame(frame):
         "params": parts[4:],
     }
 
+
+# ---------- Match state ----------
 
 @dataclass
 class MatchPlayer:
@@ -357,6 +384,7 @@ class MatchState:
     rnds_sent: bool = False
     scnt_sent: bool = False
     rndo_sent: bool = False
+    load_fallback_timer: threading.Timer | None = None
     created: float = field(default_factory=time.time)
 
     def full(self):
@@ -381,11 +409,8 @@ def ensure_player_joined_match(handler):
     with STATE_LOCK:
         if getattr(handler, "match_id", None) in MATCHES:
             match = MATCHES[handler.match_id]
-            full = match.full()
-            created = False
-            return match, full, created
+            return match, match.full(), False
 
-        # Find the oldest waiting match.
         waiting = None
         for match in MATCHES.values():
             if len(match.players) == 1:
@@ -413,8 +438,7 @@ def ensure_player_joined_match(handler):
         handler.match_id = match.match_id
         handler.player_index = player_index
         handler.match_player = player
-        full = match.full()
-        return match, full, created
+        return match, match.full(), created
 
 
 def flush_peer_state_to_player(match, player_index):
@@ -422,31 +446,23 @@ def flush_peer_state_to_player(match, player_index):
     peer = match.other(player_index)
     if not me or not peer:
         return
-
     if getattr(me.conn, "closed", False):
         return
 
     if peer.ping is not None:
         me.conn.send_tcp(game_cmd_dl(peer.ping))
-
     if peer.character_type is not None:
         me.conn.send_tcp(game_cmd_opp(peer.character_type))
-
     if peer.ready:
         me.conn.send_tcp(game_cmd_rdy(peer.ready_value))
-
     if peer.fr_progress > 0:
         me.conn.send_tcp(game_cmd_fr(peer.fr_progress))
-
     if match.lded_sent:
         me.conn.send_tcp(game_cmd_lded())
-
     if match.rnds_sent:
         me.conn.send_tcp(game_cmd_rnds(match.round_no))
-
     if match.scnt_sent:
         me.conn.send_tcp(game_cmd_scnt(0))
-
     if match.rndo_sent:
         me.conn.send_tcp(game_cmd_rndo())
 
@@ -467,7 +483,6 @@ def maybe_schedule_round_start(match):
             (p1.loaded or p1.fr_progress >= 100) and
             (p2.loaded or p2.fr_progress >= 100)
         )
-
         if not both_loaded:
             return
 
@@ -479,48 +494,43 @@ def maybe_schedule_round_start(match):
         round_no = match.round_no
 
     def do_round_start_sequence():
-        time.sleep(0.15)
+        time.sleep(ROUND_LDED_DELAY_SECS)
         with STATE_LOCK:
             current = MATCHES.get(mid)
             if not current:
                 return
-            players = [current.get(1), current.get(2)]
-            for mp in players:
+            for mp in (current.get(1), current.get(2)):
                 if mp and not getattr(mp.conn, "closed", False):
                     mp.conn.send_tcp(game_cmd_lded())
 
-        time.sleep(0.20)
+        time.sleep(ROUND_RNDS_DELAY_SECS)
         with STATE_LOCK:
             current = MATCHES.get(mid)
             if not current:
                 return
             current.rnds_sent = True
-            players = [current.get(1), current.get(2)]
-            for mp in players:
+            for mp in (current.get(1), current.get(2)):
                 if mp and not getattr(mp.conn, "closed", False):
                     mp.conn.send_tcp(game_cmd_rnds(round_no))
 
-        # Start countdown
         for value in (3, 2, 1, 0):
-            time.sleep(0.45)
+            time.sleep(ROUND_SCNT_DELAY_SECS)
             with STATE_LOCK:
                 current = MATCHES.get(mid)
                 if not current:
                     return
                 current.scnt_sent = True
-                players = [current.get(1), current.get(2)]
-                for mp in players:
+                for mp in (current.get(1), current.get(2)):
                     if mp and not getattr(mp.conn, "closed", False):
                         mp.conn.send_tcp(game_cmd_scnt(value))
 
-        time.sleep(0.15)
+        time.sleep(ROUND_RNDO_DELAY_SECS)
         with STATE_LOCK:
             current = MATCHES.get(mid)
             if not current:
                 return
             current.rndo_sent = True
-            players = [current.get(1), current.get(2)]
-            for mp in players:
+            for mp in (current.get(1), current.get(2)):
                 if mp and not getattr(mp.conn, "closed", False):
                     mp.conn.send_tcp(game_cmd_rndo())
 
@@ -533,8 +543,6 @@ def notify_match_ready(match):
     if not p1 or not p2:
         return
 
-    # Wrapper-level opponent info must be in place before _strt, because GameData.onGameReady()
-    # reads names and player indices from GameContainer.
     p1.conn.send_tcp(xt_wrapper_opponent_join(match.match_id, p2.player_index, p2.nick))
     p2.conn.send_tcp(xt_wrapper_opponent_join(match.match_id, p1.player_index, p1.nick))
 
@@ -598,6 +606,33 @@ def cleanup_handler_from_match(handler, explicit_quit=False):
             remove_match_if_empty(mid)
 
 
+# ---------- Policy server ----------
+
+class FlashPolicyHandler(StreamRequestHandler):
+
+    def handle(self):
+        try:
+            self.request.settimeout(5)
+            data = b""
+            while b"\x00" not in data and len(data) < 4096:
+                chunk = self.request.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+
+            text = data.decode(errors="replace").strip("\x00").strip()
+            debug_print(f"[POLICY] Received: {text}")
+
+            if is_policy_request(text):
+                response = socket_policy_xml(
+                    f"{DEFAULT_TCP_PORT},{DEFAULT_HTTP_PORT},{DEFAULT_STATIC_PORT},{DEFAULT_POLICY_PORT}"
+                )
+                self.request.sendall((response + "\x00").encode("utf-8"))
+                debug_print("[POLICY] Sent socket policy")
+        except Exception as exc:
+            debug_print(f"[POLICY] Error: {exc}")
+
+
 # ---------- TCP SmartFox server ----------
 
 class SmartFoxTCPHandler(StreamRequestHandler):
@@ -615,6 +650,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         self.player_index = None
         self.match_player = None
         self.closed = False
+        self.login_done = False
 
         with STATE_LOCK:
             TCP_CLIENTS.add(self)
@@ -629,6 +665,47 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             super().finish()
         except Exception:
             pass
+
+    def complete_login(self, zone="Game", raw_nick="", password="find", send_rndk=False):
+        if self.login_done:
+            return
+
+        self.login_done = True
+
+        uid = self.uid or make_uid()
+        nick = self.nick or sanitize_nick(raw_nick, uid)
+
+        self.uid = uid
+        self.nick = nick
+        self.zone = zone or "Game"
+        self.password = password or "find"
+
+        debug_print(f"[TCP] login -> uid={uid} nick={nick!r} zone={self.zone!r} pword={self.password!r}")
+
+        # Keep this off by default. Earlier evidence showed rndK before login can break the client.
+        if send_rndk:
+            self.send_tcp(rndK_msg())
+            time.sleep(0.03)
+
+        # Preserve the sequence that previously worked once the client had logged in naturally.
+        self.send_tcp(logOK_msg(uid, nick))
+        time.sleep(0.03)
+
+        self.send_tcp(rmList_msg())
+        time.sleep(0.03)
+
+        self.send_tcp(joinOK_msg(uid, room_id=LOBBY_ROOM_ID, nick=nick, pid=-1))
+        time.sleep(0.03)
+
+        self.send_tcp(ucount_msg(room_id=LOBBY_ROOM_ID, count=current_logged_in_count()))
+        time.sleep(0.03)
+
+        self.send_tcp(
+            json.dumps(
+                {"t": "xt", "b": {"o": {"_cmd": "_logOK", "id": LOBBY_ROOM_ID, "name": nick}}},
+                separators=(",", ":"),
+            )
+        )
 
     def handle(self):
         buffer = b""
@@ -659,6 +736,12 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                 debug_print(f"[TCP] Client {self.addr} disconnected")
 
     def process_frame(self, frame):
+        if is_policy_request(frame):
+            self.send_tcp(socket_policy_xml(
+                f"{DEFAULT_TCP_PORT},{DEFAULT_HTTP_PORT},{DEFAULT_STATIC_PORT},{DEFAULT_POLICY_PORT}"
+            ))
+            return
+
         if frame.startswith("<"):
             self.process_xml(frame)
             return
@@ -676,23 +759,24 @@ class SmartFoxTCPHandler(StreamRequestHandler):
 
         if "verChk" in xml:
             self.send_tcp(apiOK_msg())
+
+            def send_delayed_rndk():
+                time.sleep(0.20)
+                if self.closed or self.login_done:
+                    return
+                debug_print("[TCP] Sending delayed rndK after apiOK")
+                self.send_tcp(rndK_msg())
+
+            threading.Thread(target=send_delayed_rndk, daemon=True).start()
             return
 
         if action == "login" or "<login" in xml:
-            zone, raw_nick, password = parse_login(xml)
-            uid = make_uid()
-            nick = sanitize_nick(raw_nick, uid)
-            self.uid = uid
-            self.nick = nick
-            self.zone = zone
-            self.password = password
-            debug_print(f"[TCP] login -> uid={uid} nick={nick!r} zone={zone!r} pword={password!r}")
+            if self.login_done:
+                debug_print("[TCP] Duplicate login ignored")
+                return
 
-            self.send_tcp(logOK_msg(uid, nick))
-            self.send_tcp(rmList_msg())
-            self.send_tcp(joinOK_msg(uid, room_id=LOBBY_ROOM_ID, nick=nick, pid=-1))
-            self.send_tcp(ucount_msg(room_id=LOBBY_ROOM_ID, count=current_logged_in_count()))
-            self.send_tcp(json.dumps({"t": "xt", "b": {"o": {"_cmd": "_logOK", "id": LOBBY_ROOM_ID, "name": nick}}}, separators=(",", ":")))
+            zone, raw_nick, password = parse_login(xml)
+            self.complete_login(zone=zone, raw_nick=raw_nick, password=password, send_rndk=False)
             return
 
         if "getRmList" in xml:
@@ -706,6 +790,10 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                 self.nick = sanitize_nick("", self.uid)
             self.send_tcp(joinOK_msg(self.uid, room_id=LOBBY_ROOM_ID, nick=self.nick, pid=-1))
             self.send_tcp(ucount_msg(room_id=LOBBY_ROOM_ID, count=current_logged_in_count()))
+            return
+
+        if action == "leaveRoom":
+            debug_print("[TCP] leaveRoom received")
             return
 
         if "roundTripBench" in xml or "roundTrip" in xml:
@@ -733,7 +821,6 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             self.handle_cngame_xt(cmd, params)
             return
 
-        # Friendly quit / keepalive sometimes appear via other extensions; handle the useful ones generically.
         if cmd == "rgq":
             cleanup_handler_from_match(self, explicit_quit=True)
             return
@@ -779,11 +866,17 @@ class SmartFoxTCPHandler(StreamRequestHandler):
 
         debug_print(f"[TCP] Unhandled Lobby XT command: {cmd}")
 
+    def relay_cngame_to_peer(self, match, player, cmd, params, quiet=False):
+        peer = match.other(player.player_index)
+        if not peer or getattr(peer.conn, "closed", False):
+            return False
+        try:
+            peer.conn.send_tcp(xt_server_msg(cmd, *params), quiet=quiet)
+            return True
+        except Exception:
+            return False
+
     def handle_cngame_xt(self, cmd, params):
-        if cmd == "rgq":
-            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rgq")
-            cleanup_handler_from_match(self, explicit_quit=True)
-            return
         match = get_match_for_handler(self)
         if not match:
             debug_print(f"[TCP] cnGame {cmd} ignored because client is not assigned to a match")
@@ -795,6 +888,11 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             debug_print(f"[TCP] cnGame {cmd} ignored because match state is missing player record")
             return
 
+        if cmd == "rgq":
+            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rgq")
+            cleanup_handler_from_match(self, explicit_quit=True)
+            return
+
         first_seen = not player.cn_seen
         player.cn_seen = True
 
@@ -802,10 +900,6 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} entered cnGame")
             flush_peer_state_to_player(match, player.player_index)
 
-        # Client outbound game messages always include:
-        #   params[0] = local msg counter
-        #   params[1] = payload / value
-        # We only need the value field here.
         value = params[1] if len(params) > 1 else (params[0] if params else None)
 
         if cmd == "pi":
@@ -850,7 +944,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             if peer and peer.cn_seen:
                 peer.conn.send_tcp(game_cmd_rmch())
             if match.full() and all(p.rematch for p in match.players.values()):
-                # Reset all flags.
+                match.round_no += 1
                 match.lded_sent = False
                 match.rnds_sent = False
                 match.scnt_sent = False
@@ -869,12 +963,27 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             return
 
         if cmd == "cu":
-            # Live-authoritative fight simulation is not implemented here yet.
-            # We log it so the next reverse-engineering step has the raw traffic.
-            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} cu params={params}")
+            frame_no = params[0] if len(params) > 0 else "0"
+            state = params[1] if len(params) > 1 else "0"
+            if parse_int(frame_no, 0) % 60 == 0:
+                debug_print(f"[GAME] Match {match.match_id} P{player.player_index} cu frame={frame_no} state={state}")
+            if peer and not getattr(peer.conn, "closed", False):
+                peer.conn.send_tcp(xt_server_msg("cu", frame_no, state), quiet=True)
             return
 
         if cmd == "ka":
+            return
+
+        relayed = self.relay_cngame_to_peer(
+            match,
+            player,
+            cmd,
+            params,
+            quiet=(cmd in CNGAME_QUIET_RELAY),
+        )
+        if relayed:
+            if cmd not in CNGAME_QUIET_RELAY:
+                debug_print(f"[GAME] Relayed cnGame cmd={cmd} from P{player.player_index} params={params}")
             return
 
         debug_print(f"[TCP] Unhandled cnGame command: {cmd} params={params}")
@@ -882,14 +991,15 @@ class SmartFoxTCPHandler(StreamRequestHandler):
     def process_json(self, text):
         debug_print(f"[TCP] Unhandled inbound JSON frame: {text}")
 
-    def send_tcp(self, payload):
+    def send_tcp(self, payload, quiet=False):
         if payload is None or self.closed:
             return
         try:
             encoded = (payload + "\x00").encode("utf-8")
             with self.send_lock:
                 self.conn.sendall(encoded)
-            debug_print(f"[TCP] Sent: {payload}")
+            if not quiet:
+                debug_print(f"[TCP] Sent: {payload}")
         except Exception as exc:
             debug_print(f"[TCP] Error sending to {self.addr}: {exc}")
 
@@ -900,10 +1010,6 @@ class ThreadedTCPServer(ThreadingTCPServer):
 
 
 # ---------- HTTP BlueBox server ----------
-#
-# This remains intentionally minimal. The direct TCP socket path is the path that
-# the current TKO/Ruffle workflow is already using successfully. BlueBox is kept
-# available as a fallback for verChk/login/roomlist.
 
 class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
     server_version = "TKOBlueBox/1.0"
@@ -969,7 +1075,7 @@ class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
         if "verChk" in payload:
             return self._send_text(sid + apiOK_msg())
 
-        if action == "login" or "action='login'" in payload:
+        if action == "login" or "action='login'" in payload or "<login" in payload:
             zone, raw_nick, password = parse_login(payload)
             uid = make_uid()
             nick = sanitize_nick(raw_nick, uid)
@@ -980,13 +1086,17 @@ class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
             q.append(rmList_msg())
             q.append(joinOK_msg(uid, room_id=LOBBY_ROOM_ID, nick=nick, pid=-1))
             q.append(ucount_msg(room_id=LOBBY_ROOM_ID, count=current_logged_in_count()))
-            q.append(json.dumps({"t": "xt", "b": {"o": {"_cmd": "_logOK", "id": LOBBY_ROOM_ID, "name": nick}}}, separators=(",", ":")))
+            q.append(
+                json.dumps(
+                    {"t": "xt", "b": {"o": {"_cmd": "_logOK", "id": LOBBY_ROOM_ID, "name": nick}}},
+                    separators=(",", ":"),
+                )
+            )
             return self._send_text("")
 
         if "getRmList" in payload:
             return self._send_text(sid + rmList_msg())
 
-        # Minimal XT fallback.
         if payload.startswith("%"):
             parsed = parse_client_xt_frame(payload)
             if parsed:
@@ -1028,7 +1138,12 @@ class ThreadedStaticHTTPServer(ThreadingMixIn, HTTPServer):
 
 # ---------- Boot ----------
 
-def run_servers(bind_host, tcp_port, http_port, static_dir=None, static_port=None):
+def run_servers(bind_host, tcp_port, http_port, static_dir=None, static_port=None, policy_port=DEFAULT_POLICY_PORT):
+    policy_server = ThreadedTCPServer((bind_host, policy_port), FlashPolicyHandler)
+    policy_thread = threading.Thread(target=policy_server.serve_forever, name="policy-server", daemon=True)
+    policy_thread.start()
+    debug_print(f"Flash policy server listening on {bind_host}:{policy_port}")
+
     tcp_server = ThreadedTCPServer((bind_host, tcp_port), SmartFoxTCPHandler)
     tcp_thread = threading.Thread(target=tcp_server.serve_forever, name="tcp-server", daemon=True)
     tcp_thread.start()
@@ -1054,6 +1169,11 @@ def run_servers(bind_host, tcp_port, http_port, static_dir=None, static_port=Non
         debug_print("Shutting down servers...")
     finally:
         try:
+            policy_server.shutdown()
+            policy_server.server_close()
+        except Exception:
+            pass
+        try:
             tcp_server.shutdown()
             tcp_server.server_close()
         except Exception:
@@ -1072,11 +1192,12 @@ def run_servers(bind_host, tcp_port, http_port, static_dir=None, static_port=Non
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TKO SmartFox/BlueBox emulator with real 2-player pre-round matchmaking")
+    parser = argparse.ArgumentParser(description="TKO SmartFox/BlueBox emulator with multiplayer relay")
     parser.add_argument("--bind", default=DEFAULT_BIND, help="Bind address for TCP/HTTP servers (default 0.0.0.0)")
     parser.add_argument("--advertise-ip", default=None, help="IP address to write into cnsl.xml; defaults to auto-detect")
     parser.add_argument("--tcp-port", type=int, default=DEFAULT_TCP_PORT, help="SmartFox TCP port (default 9339)")
     parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT, help="BlueBox HTTP port (default 8080)")
+    parser.add_argument("--policy-port", type=int, default=DEFAULT_POLICY_PORT, help="Flash socket policy port (default 843)")
     parser.add_argument("--send-all-http", action="store_true", help="HTTP poll: send all queued messages at once")
     parser.add_argument("--static-dir", default=None, help="Optional directory to serve as a simple HTTP file server")
     parser.add_argument("--static-port", type=int, default=DEFAULT_STATIC_PORT, help="Static file server port (default 8000)")
@@ -1102,6 +1223,7 @@ def main():
     debug_print("Advertise IP:", advertise_ip)
     debug_print("TCP (SmartFox) port:", args.tcp_port)
     debug_print("HTTP (BlueBox) port:", args.http_port)
+    debug_print("Policy port:", args.policy_port)
     if args.static_dir:
         debug_print("Static file dir:", args.static_dir)
         debug_print("Static file port:", args.static_port)
@@ -1113,6 +1235,7 @@ def main():
         http_port=args.http_port,
         static_dir=args.static_dir,
         static_port=args.static_port,
+        policy_port=args.policy_port,
     )
 
 
