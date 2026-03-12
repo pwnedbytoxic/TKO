@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
 """
-tko_server.py
+tko_server.py  –  TKO SmartFox/BlueBox emulator
 
-Combined SmartFox TCP + BlueBox HTTP emulator for Titanic KungFu Offensive (TKO).
+Architecture (confirmed from cnGame.as server extension)
+=========================================================
+This is a SERVER-AUTHORITATIVE physics simulation, NOT an input relay.
 
-Usage example:
-python tko_server.py --bind 0.0.0.0 --advertise-ip 192.168.1.50 --write-cnsl "C:\\path\\to\\tko\\cnsl.xml"
+The real SmartFox cnGame extension:
+  - Runs the full game physics loop (positions, gravity, attacks, health)
+  - Receives cu (input bits) from clients
+  - Calls runSimulation() + sendRoundSnapshot() on each cu
+  - Sends back a full world-state su packet every frame
+
+Real su packet format (18 fields, base50 encoded positions/health):
+  ["su", nextSuId, roundTimer,
+   camGoal, 0,
+   p1.x, p1.y, p1.anim, p1.facing, p1.health, p1.superMeter,
+   1,
+   p2.x, p2.y, p2.anim, p2.facing, p2.health, p2.superMeter]
+
+Over SFS1 wire:
+  %xt%su%<roomId>%<suId>%<timer>%<cam>%0%<p1x>%<p1y>%<p1anim>%<p1face>%<p1hp>%<p1sup>%1%<p2x>%<p2y>%<p2anim>%<p2face>%<p2hp>%<p2sup>%
+
+Round sequence (no server-side countdown):
+  both loaded → lded → startRound() → rnds + first su → cu drives sim
+
+Usage: python tko_server.py --bind 0.0.0.0 --advertise-ip <ip>
 """
 
 import argparse
@@ -39,20 +59,53 @@ ROOM_MAX_USERS = 2
 
 WRAPPER_START_DELAY_SECS = 0.20
 ROUND_LDED_DELAY_SECS = 0.15
-ROUND_RNDS_DELAY_SECS = 0.20
-ROUND_SCNT_DELAY_SECS = 0.45
-ROUND_RNDO_DELAY_SECS = 0.15
 
 HTTP_SEND_ALL_QUEUED = False
 
-# Commands handled specially by server logic.
+# Commands handled specially by server logic (not raw-relayed).
 CNGAME_SERVER_HANDLED = {
-    "rgq", "pi", "typ", "rdy", "fr", "strt", "rmch", "cu", "ka"
+    "rgq", "pi", "typ", "rdy", "fr", "strt", "rmch", "cu", "ka", "cl", "ct", "box"
 }
 
-# Commands that are frequent enough that logging every relay would be noisy.
+# Commands noisy enough that we skip per-packet log lines.
 CNGAME_QUIET_RELAY = {
-    "cu", "fx", "su", "cmbo", "shk", "sups", "adpj", "rmpj", "rmfx"
+    "cu", "fx", "su", "cmbo", "shk", "sups", "adpj", "rmpj", "rmfx", "thrwn"
+}
+
+# ---------- Physics constants (from cnGame.as) ----------
+BASE50       = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
+FRAME_MS     = 40          # simulation tick rate (25 fps)
+SU_TICK_HZ   = 1000 // FRAME_MS  # 25 fps
+ROUND_TIME   = 99          # seconds
+ROUND_TIME_MS = 99000
+START_X_1    = 600
+START_X_2    = 1000
+GROUND_Y     = 550
+SCREEN_WIDTH = 800
+LEVEL_WIDTH  = 1600
+CAMERA_MARGIN = 120
+MOVE_SPEED   = 18
+JUMP_SPEED   = 45
+GRAVITY      = 4
+ATTACK_LOCK_MS  = 280
+STRONG_LOCK_MS  = 420
+THROW_LOCK_MS   = 520
+ROUND_END_DELAY_MS = 800
+
+BASE_ANIMATIONS = {
+    "IDLE": 0, "WALK_FWD": 1, "WALK_BACK": 2,
+    "JUMP_UP": 3, "JUMP_FRONT": 4, "JUMP_BACK": 5,
+    "LIGHT_KICK": 6, "STRONG_KICK1": 7, "STRONG_KICK2": 8, "STRONG_KICK3": 9,
+    "LIGHT_PUNCH": 10, "STRONG_PUNCH1": 11, "STRONG_PUNCH2": 12, "STRONG_PUNCH3": 13,
+    "THROW": 14, "CROUCH": 15,
+    "LOW_LIGHT_PUNCH": 16, "LOW_STRONG_PUNCH1": 17, "LOW_STRONG_PUNCH2": 18,
+    "LOW_LIGHT_KICK": 19, "LOW_STRONG_KICK1": 20, "LOW_STRONG_KICK2": 21,
+    "JUMP_LIGHT_KICK": 22, "JUMP_STRONG_KICK1": 23, "JUMP_STRONG_KICK2": 24,
+    "JUMP_LIGHT_PUNCH": 25, "JUMP_STRONG_PUNCH1": 26, "JUMP_STRONG_PUNCH2": 27,
+    "THROWN": 28, "LOW_BLOCK": 29, "BLOCK": 30, "DIZZY": 31,
+    "HIT": 32, "JUMP_HIT": 33, "LOW_HIT": 34,
+    "KNOCKDOWN": 35, "RECOVER": 36, "DEFEAT": 37, "VICTORY": 38,
+    "FROZEN": 39, "THROWN_END": 40, "REACH": 41,
 }
 
 # ---------- Global state ----------
@@ -112,14 +165,12 @@ def auto_detect_advertise_ip():
             sock.close()
         except Exception:
             pass
-
     try:
         ip = socket.gethostbyname(socket.gethostname())
         if ip and ip != "127.0.0.1":
             return ip
     except Exception:
         pass
-
     return "127.0.0.1"
 
 
@@ -172,7 +223,6 @@ def is_policy_request(text):
 
 
 def apiOK_msg():
-    # Use explicit open/close body for maximum SFS 1.x compatibility.
     return "<msg t='sys'><body action='apiOK' r='0'></body></msg>"
 
 
@@ -245,22 +295,19 @@ def roundTripRes_msg():
 
 
 def xt_server_msg(cmd, *params):
+    """Short-form server message: %xt%<cmd>%<params...>%
+    In SFS1 XT parsing the first param is treated as roomId.
+    This is correct for control messages where the client handler reads
+    the value from params[0] (= tokens[4] in the split).
+    """
     parts = ["xt", str(cmd)]
     parts.extend(str(p) for p in params)
     return "%" + "%".join(parts) + "%"
 
 
 def xt_cngame_msg(room_id, cmd, *params):
-    """Preserve the full cnGame XT envelope for peer-relayed traffic.
-
-    Client->server gameplay packets arrive as:
-        %xt%cnGame%CMD%ROOM%P1%P2%...%
-
-    The short server form (e.g. %xt%opp%0%26%) is correct for synthetic
-    control packets generated by the emulator, but NOT for raw peer gameplay
-    relay.  fr/cu/strt and any unknown cnGame packets must keep the cnGame
-    extension token and room id intact, or the recipient never routes them into
-    the live gameplay handler.
+    """Full cnGame extension envelope for raw peer-relay traffic.
+    %xt%cnGame%<cmd>%<room_id>%<params...>%
     """
     parts = ["xt", "cnGame", str(cmd), str(room_id)]
     parts.extend(str(p) for p in params)
@@ -295,8 +342,9 @@ def game_cmd_opp(opponent_character_type):
     return xt_server_msg("opp", 0, opponent_character_type)
 
 
-def game_cmd_rdy(ready_value=1):
-    return xt_server_msg("rdy", 0, ready_value)
+def game_cmd_rdy(map_id=0):
+    """Send rdy with mapId to opponent (from cnGame.as rdy handler)."""
+    return xt_server_msg("rdy", map_id)
 
 
 def game_cmd_fr(progress):
@@ -311,30 +359,67 @@ def game_cmd_rnds(round_no):
     return xt_server_msg("rnds", 0, round_no)
 
 
-def game_cmd_scnt(value):
-    return xt_server_msg("scnt", 0, value)
-
-
-def game_cmd_ct(seconds_left):
-    # ct behaves like a plain short server command, not a 0-prefixed room/control packet.
-    # With the extra 0, the HUD only shows 0/1 instead of a 99->0 countdown.
-    return xt_server_msg("ct", max(0, parse_int(seconds_left, 0)))
-
-
-def game_cmd_su(msg_id, p1_pad_bits, p2_pad_bits):
-    # cu's second parameter is a pad/input bitmask. The first parameter is a client-local
-    # frame counter, which should NOT be mirrored back into the authoritative server sync.
-    # The closest-fit live format is a short server update keyed by a server sequence id
-    # plus both players' current pad states.
-    return xt_server_msg("su", msg_id, p1_pad_bits, p2_pad_bits)
-
-
-def game_cmd_rndo():
-    return xt_server_msg("rndo")
-
-
 def game_cmd_rmch():
-    return xt_server_msg("rmch", 0, 1)
+    return xt_server_msg("rmch", 1)
+
+
+# ---------------------------------------------------------------------------
+# Physics helpers (ported from cnGame.as)
+# ---------------------------------------------------------------------------
+
+def encode_base50(value):
+    """Encode integer to 2-char base50 string. Matches cnGame.as encodeBase50()."""
+    negative = value < 0
+    if negative:
+        value = -value
+    value = min(int(value), 2499)
+    s = BASE50[value // 50] + BASE50[value % 50]
+    return ("-" + s) if negative else s
+
+
+def now_ms():
+    return time.time() * 1000.0
+
+
+def has_bit(bits, n):
+    return bool(bits & (1 << n))
+
+
+def is_neutral_anim(anim):
+    return anim in (0, 1, 2, 3, 4, 5, 15)
+
+
+# ---------------------------------------------------------------------------
+# su world-state snapshot (from cnGame.as sendRoundSnapshot)
+# ---------------------------------------------------------------------------
+def game_cmd_su_snapshot(match_id, su_id, round_timer, f0, f1):
+    """Build authoritative world-state su packet. f0/f1 are FighterState objects."""
+    min_x = min(f0.x, f1.x) - CAMERA_MARGIN
+    max_x = max(f0.x, f1.x) + CAMERA_MARGIN
+    cam = int(((min_x + max_x) / 2) - (SCREEN_WIDTH / 2))
+    cam = max(0, min(LEVEL_WIDTH - SCREEN_WIDTH, cam))
+    return xt_server_msg(
+        "su", match_id,
+        su_id, round_timer,
+        encode_base50(cam), 0,
+        encode_base50(int(f0.x)), encode_base50(int(f0.y)),
+        f0.anim, (1 if f0.facing else 0),
+        encode_base50(f0.health), f0.super_meter,
+        1,
+        encode_base50(int(f1.x)), encode_base50(int(f1.y)),
+        f1.anim, (1 if f1.facing else 0),
+        encode_base50(f1.health), f1.super_meter,
+    )
+
+
+def game_cmd_rndo(p1_wins=0, p2_wins=0, time_up=0, winner=0, perfect="false", comeback="false"):
+    """Round-over packet from cnGame.as resolveRoundEnd.
+    winner: 1=P1, 2=P2, 0=draw.  time_up: 1 if timer expired."""
+    return xt_server_msg("rndo", p1_wins, p2_wins, time_up, winner, perfect, comeback)
+
+
+def game_cmd_win(winner_zero_based):
+    return xt_server_msg("win", winner_zero_based)
 
 
 def write_cnsl_xml(path, advertise_ip):
@@ -353,19 +438,15 @@ def parse_login(xml_text):
     nick = ""
     zone = "Game"
     password = ""
-
     m = re.search(r"<nick><!\[CDATA\[(.*?)\]\]></nick>", xml_text, re.S)
     if m:
         nick = m.group(1)
-
     m = re.search(r"<pword><!\[CDATA\[(.*?)\]\]></pword>", xml_text, re.S)
     if m:
         password = m.group(1)
-
     m = re.search(r"<login\s+z=['\"]([^'\"]+)['\"]", xml_text)
     if m:
         zone = m.group(1)
-
     return zone, nick, password
 
 
@@ -386,6 +467,367 @@ def parse_client_xt_frame(frame):
 
 
 # ---------- Match state ----------
+
+# ---------------------------------------------------------------------------
+# Game physics (server-authoritative simulation ported from cnGame.as)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FighterState:
+    """Per-fighter physics and game state (mirrors player object in cnGame.as)."""
+    index: int                    # 0 = P1, 1 = P2  (0-based, matches JS)
+    x: float = 600.0
+    y: float = float(GROUND_Y)
+    vy: float = 0.0
+    health: int = 1000
+    super_meter: int = 0
+    anim: int = 0                 # animation id (BASE_ANIMATIONS values)
+    facing: bool = True           # True = facing right (P1 default)
+    attack_until: float = 0.0    # ms timestamp
+    hit_until: float = 0.0       # ms timestamp
+    knocked_out: bool = False
+    special_until: float = 0.0
+    special_move: object = None
+    special_hit_done: bool = False
+    last_key_bits: int = 0
+    wins: int = 0
+
+
+def reset_fighter_for_round(f, x, facing):
+    """Re-initialise fighter for a new round (resetFighterForRound in cnGame.as)."""
+    f.x = float(x)
+    f.y = float(GROUND_Y)
+    f.vy = 0.0
+    f.facing = facing
+    f.health = 1000
+    f.super_meter = 0
+    f.anim = BASE_ANIMATIONS["IDLE"]
+    f.attack_until = 0.0
+    f.hit_until = 0.0
+    f.knocked_out = False
+    f.special_until = 0.0
+    f.special_move = None
+    f.special_hit_done = False
+    f.last_key_bits = 0
+
+
+def update_facing(f0, f1):
+    f0.facing = f0.x <= f1.x
+    f1.facing = f1.x < f0.x
+
+
+def clamp_players(f0, f1):
+    if f0.x < 150:
+        f0.x = 150.0
+    if f1.x > 1450:
+        f1.x = 1450.0
+    if f0.x > f1.x - 120:
+        center = (f0.x + f1.x) / 2.0
+        f0.x = center - 60.0
+        f1.x = center + 60.0
+
+
+def apply_movement(fighter, opponent, now):
+    bits = fighter.last_key_bits
+    move_left  = has_bit(bits, 2)   # bit 2 = left  (4)
+    move_right = has_bit(bits, 3)   # bit 3 = right (8)
+    down       = has_bit(bits, 1)   # bit 1 = down  (2)
+    up         = has_bit(bits, 0)   # bit 0 = up    (1)
+
+    on_ground = fighter.y >= GROUND_Y
+
+    if on_ground and up:
+        fighter.vy = -float(JUMP_SPEED)
+        if move_left or move_right:
+            fighter.anim = BASE_ANIMATIONS["JUMP_FRONT" if fighter.facing else "JUMP_BACK"]
+        else:
+            fighter.anim = BASE_ANIMATIONS["JUMP_UP"]
+
+    if on_ground:
+        if move_left and not move_right:
+            fighter.x -= MOVE_SPEED
+            fighter.anim = BASE_ANIMATIONS["WALK_BACK" if fighter.facing else "WALK_FWD"]
+        elif move_right and not move_left:
+            fighter.x += MOVE_SPEED
+            fighter.anim = BASE_ANIMATIONS["WALK_FWD" if fighter.facing else "WALK_BACK"]
+        elif down:
+            fighter.anim = BASE_ANIMATIONS["CROUCH"]
+        else:
+            fighter.anim = BASE_ANIMATIONS["IDLE"]
+    else:
+        if move_left and not move_right:
+            fighter.x -= MOVE_SPEED * 0.6
+            fighter.anim = BASE_ANIMATIONS["JUMP_BACK" if fighter.facing else "JUMP_FRONT"]
+        elif move_right and not move_left:
+            fighter.x += MOVE_SPEED * 0.6
+            fighter.anim = BASE_ANIMATIONS["JUMP_FRONT" if fighter.facing else "JUMP_BACK"]
+        else:
+            fighter.anim = BASE_ANIMATIONS["JUMP_UP"]
+
+
+def _apply_attack_hit(match, attacker, defender, attack, now):
+    """Apply damage and effects. Returns list of extra broadcast packets."""
+    extra = []
+    defender.health = max(0, defender.health - attack["damage"])
+    defender.hit_until = now + 220.0
+    if defender.y < GROUND_Y:
+        defender.anim = BASE_ANIMATIONS["JUMP_HIT"]
+    else:
+        defender.anim = BASE_ANIMATIONS["HIT"]
+
+    attacker.super_meter = min(100, attacker.super_meter + (18 if attack["damage"] >= 90 else 10))
+
+    if attack.get("thrown"):
+        extra.append(xt_server_msg("thrwn", attacker.index + 1))
+        defender.anim = BASE_ANIMATIONS["THROWN"]
+
+    shake = attack.get("shake", 0)
+    if shake > 0:
+        extra.append(xt_server_msg("shk", shake))
+
+    return extra
+
+
+def maybe_attack(match, fighter, opponent, now):
+    """Decide and apply attack if button bits say so.
+    Returns list of extra broadcast packets (shk, thrwn, sups)."""
+    bits = fighter.last_key_bits
+    extra = []
+
+    # Flags
+    crouching = fighter.y >= GROUND_Y and has_bit(bits, 1)
+    airborne  = fighter.y < GROUND_Y
+
+    attack = None
+
+    # Super (bit 13, 8192) — costs 100 super meter
+    if has_bit(bits, 13) and fighter.super_meter >= 100:
+        attack = {"anim": BASE_ANIMATIONS["STRONG_PUNCH3"], "damage": 180,
+                  "range": 180, "lock": STRONG_LOCK_MS, "shake": 10, "super": True}
+
+    # Throw (bit 8, 256)
+    elif has_bit(bits, 8):
+        attack = {"anim": BASE_ANIMATIONS["THROW"], "damage": 90,
+                  "range": 120, "lock": THROW_LOCK_MS, "shake": 8, "thrown": True}
+
+    # Strong kick (bit 7, 128)
+    elif attack is None and has_bit(bits, 7):
+        a = BASE_ANIMATIONS["JUMP_STRONG_KICK1" if airborne else ("LOW_STRONG_KICK1" if crouching else "STRONG_KICK1")]
+        attack = {"anim": a, "damage": 70, "range": 155, "lock": STRONG_LOCK_MS, "shake": 7}
+
+    # Light kick (bit 6, 64)
+    elif attack is None and has_bit(bits, 6):
+        a = BASE_ANIMATIONS["JUMP_LIGHT_KICK" if airborne else ("LOW_LIGHT_KICK" if crouching else "LIGHT_KICK")]
+        attack = {"anim": a, "damage": 40, "range": 135, "lock": ATTACK_LOCK_MS, "shake": 4}
+
+    # Strong punch (bit 5, 32)
+    elif attack is None and has_bit(bits, 5):
+        a = BASE_ANIMATIONS["JUMP_STRONG_PUNCH1" if airborne else ("LOW_STRONG_PUNCH1" if crouching else "STRONG_PUNCH1")]
+        attack = {"anim": a, "damage": 60, "range": 145, "lock": STRONG_LOCK_MS, "shake": 6}
+
+    # Light punch (bit 4, 16)
+    elif attack is None and has_bit(bits, 4):
+        a = BASE_ANIMATIONS["JUMP_LIGHT_PUNCH" if airborne else ("LOW_LIGHT_PUNCH" if crouching else "LIGHT_PUNCH")]
+        attack = {"anim": a, "damage": 35, "range": 125, "lock": ATTACK_LOCK_MS, "shake": 3}
+
+    if attack is None:
+        return extra
+
+    fighter.anim = attack["anim"]
+    fighter.attack_until = now + attack["lock"]
+
+    if attack.get("super"):
+        fighter.super_meter = 0
+        extra.append(xt_server_msg("sups", fighter.index, 600))
+
+    # Check hit range
+    in_range = (abs(fighter.x - opponent.x) <= attack["range"] and
+                abs(fighter.y - opponent.y) <= 120)
+    if in_range:
+        extra.extend(_apply_attack_hit(match, fighter, opponent, attack, now))
+
+    return extra
+
+
+def update_player(match, fighter, opponent, now):
+    """Single-fighter update tick (updatePlayer in cnGame.as)."""
+    if fighter.knocked_out:
+        fighter.anim = BASE_ANIMATIONS["DEFEAT"]
+        return []
+
+    extra = []
+
+    if fighter.hit_until > now:
+        fighter.anim = BASE_ANIMATIONS["JUMP_HIT" if fighter.y < GROUND_Y else "HIT"]
+    elif fighter.attack_until <= now:
+        apply_movement(fighter, opponent, now)
+        extra = maybe_attack(match, fighter, opponent, now)
+
+    # Gravity
+    if fighter.y < GROUND_Y or fighter.vy != 0:
+        fighter.y += fighter.vy
+        fighter.vy += GRAVITY
+        if fighter.y >= GROUND_Y:
+            fighter.y = float(GROUND_Y)
+            fighter.vy = 0.0
+            if fighter.attack_until <= now and fighter.hit_until <= now:
+                fighter.anim = BASE_ANIMATIONS["IDLE"]
+
+    if (fighter.attack_until <= now and fighter.hit_until <= now and
+            fighter.y >= GROUND_Y and not is_neutral_anim(fighter.anim)):
+        fighter.anim = BASE_ANIMATIONS["IDLE"]
+
+    return extra
+
+
+def simulate_frame(match, now):
+    """One 40 ms physics tick. Returns list of extra packets to broadcast."""
+    f0 = match.fighters[0]
+    f1 = match.fighters[1]
+    extra = []
+
+    if match.round_resolved:
+        if now >= match.round_end_time:
+            # resolve_round_end will be called after this frame
+            match._resolve_pending = True
+        return extra
+
+    update_facing(f0, f1)
+    extra.extend(update_player(match, f0, f1, now))
+    extra.extend(update_player(match, f1, f0, now))
+    clamp_players(f0, f1)
+
+    elapsed = now - match.round_start_time
+    if elapsed >= ROUND_TIME_MS:
+        _finish_round(match, winner_1based=0, time_up=True)
+        return extra
+
+    if f0.health <= 0 and f1.health <= 0:
+        _finish_round(match, winner_1based=0, time_up=False)
+    elif f0.health <= 0:
+        _finish_round(match, winner_1based=2, time_up=False)
+    elif f1.health <= 0:
+        _finish_round(match, winner_1based=1, time_up=False)
+
+    return extra
+
+
+def run_simulation(match):
+    """Advance simulation by all elapsed 40 ms ticks. Returns extra packets."""
+    if not match.round_started:
+        return []
+    now = now_ms()
+    if match.last_tick == 0:
+        match.last_tick = now
+        return []
+    extra = []
+    while now - match.last_tick >= FRAME_MS:
+        match.last_tick += FRAME_MS
+        extra.extend(simulate_frame(match, match.last_tick))
+    return extra
+
+
+def _finish_round(match, winner_1based, time_up):
+    """Mark round as resolved (finishRound in cnGame.as)."""
+    if match.round_resolved:
+        return
+    match.round_resolved = True
+    match.round_end_time = now_ms() + ROUND_END_DELAY_MS
+    match._resolve_pending = False
+    match.pending_winner = winner_1based
+    match.pending_time_up = time_up
+    f0, f1 = match.fighters[0], match.fighters[1]
+    if winner_1based == 1:
+        f1.knocked_out = True
+        f1.anim = BASE_ANIMATIONS["DEFEAT"]
+    elif winner_1based == 2:
+        f0.knocked_out = True
+        f0.anim = BASE_ANIMATIONS["DEFEAT"]
+
+
+def _build_rndo_packets(match):
+    """Build rndo (and optionally win) packets for broadcast. Returns list."""
+    f0, f1 = match.fighters[0], match.fighters[1]
+    winner  = match.pending_winner
+    time_up = match.pending_time_up
+
+    if winner == 1:
+        f0.wins += 1
+        perfect = "true" if f1.health == 1000 else "false"
+    elif winner == 2:
+        f1.wins += 1
+        perfect = "true" if f0.health == 1000 else "false"
+    else:
+        perfect = "false"
+
+    pkts = []
+    match_winner = -1
+    if f0.wins >= 2:
+        match_winner = 0
+    elif f1.wins >= 2:
+        match_winner = 1
+
+    if match_winner != -1:
+        pkts.append(game_cmd_win(match_winner))
+
+    pkts.append(game_cmd_rndo(
+        p1_wins=f0.wins, p2_wins=f1.wins,
+        time_up=1 if time_up else 0,
+        winner=winner,
+        perfect=perfect, comeback="false",
+    ))
+
+    if match_winner != -1:
+        match.round_started = False  # stop new su after match ends
+
+    return pkts, match_winner
+
+
+def _build_su_packet(match):
+    """Compute round timer and return the current su snapshot packet."""
+    f0, f1 = match.fighters[0], match.fighters[1]
+    elapsed = now_ms() - match.round_start_time
+    timer = max(0, ROUND_TIME - int(elapsed / 1000))
+    return game_cmd_su_snapshot(match.match_id, match.next_su_id, timer, f0, f1)
+
+
+def game_start_round(match):
+    """Initialise physics and start broadcasting (startRound in cnGame.as).
+    Returns (rnds_packet, first_su_packet)."""
+    match.round_number += 1
+    match.round_started = True
+    match.round_resolved = False
+    match._resolve_pending = False
+    match.round_start_time = now_ms()
+    match.round_end_time = 0.0
+    match.last_tick = match.round_start_time
+    match.next_su_id = 1
+
+    f0 = match.fighters[0]
+    f1 = match.fighters[1]
+    reset_fighter_for_round(f0, START_X_1, facing=True)
+    reset_fighter_for_round(f1, START_X_2, facing=False)
+
+    rnds_pkt = game_cmd_rnds(match.round_number)
+    su_pkt   = _build_su_packet(match)
+    match.next_su_id += 1
+    return rnds_pkt, su_pkt
+
+
+def game_reset_for_rematch(match):
+    """Reset all game state between rematches (resetForRematch in cnGame.as)."""
+    match.map_id = None
+    match.round_number = 0
+    match.round_started = False
+    match.round_resolved = False
+    match._resolve_pending = False
+    match.next_su_id = 1
+    match.pending_winner = 0
+    match.pending_time_up = False
+    for f in match.fighters:
+        f.wins = 0
+        f.last_key_bits = 0
+
 
 @dataclass
 class MatchPlayer:
@@ -412,19 +854,29 @@ class MatchPlayer:
 @dataclass
 class MatchState:
     match_id: int
-    players: dict[int, MatchPlayer] = field(default_factory=dict)
-    round_no: int = 1
+    players: dict = field(default_factory=dict)
+    # Lobby/load state
+    round_no: int = 1            # displayed round number (increments each startRound)
     round_sequence_started: bool = False
-    round_live: bool = False
+    round_live: bool = False     # kept for guard in maybe_schedule_round_start
     lded_sent: bool = False
     rnds_sent: bool = False
-    scnt_sent: bool = False
-    scnt_value: int | None = None
-    rndo_sent: bool = False
-    su_seq: int = 0
-    round_time_left: int = 99
-    clock_generation: int = 0
-    load_fallback_timer: threading.Timer | None = None
+    map_id: int = None
+    # Physics / game state (mirrors cnGame.as game object)
+    fighters: list = field(default_factory=lambda: [
+        FighterState(index=0, x=float(START_X_1), facing=True),
+        FighterState(index=1, x=float(START_X_2), facing=False),
+    ])
+    round_number: int = 0        # incremented each startRound (JS: game.roundNumber)
+    round_started: bool = False
+    round_resolved: bool = False
+    _resolve_pending: bool = False
+    round_start_time: float = 0.0
+    round_end_time: float = 0.0
+    last_tick: float = 0.0
+    next_su_id: int = 1
+    pending_winner: int = 0
+    pending_time_up: bool = False
     created: float = field(default_factory=time.time)
 
     def full(self):
@@ -449,7 +901,6 @@ def ensure_player_joined_match(handler):
     global WAITING_MATCH_ID
 
     with STATE_LOCK:
-        # If this handler is already in a live match, keep it there.
         existing_mid = getattr(handler, "match_id", None)
         if existing_mid is not None:
             existing = MATCHES.get(existing_mid)
@@ -457,7 +908,6 @@ def ensure_player_joined_match(handler):
                 return existing, existing.full(), False
 
         waiting_match = None
-
         if WAITING_MATCH_ID is not None:
             m = MATCHES.get(WAITING_MATCH_ID)
             if m and len(m.players) == 1:
@@ -488,7 +938,6 @@ def ensure_player_joined_match(handler):
             player_index=player_index,
             match_id=match.match_id,
         )
-
         match.players[player_index] = player
         handler.match_id = match.match_id
         handler.player_index = player_index
@@ -504,27 +953,25 @@ def flush_peer_state_to_player(match, player_index):
         return
     if getattr(me.conn, "closed", False):
         return
-
     if peer.ping is not None:
         me.conn.send_tcp(game_cmd_dl(peer.ping))
     if peer.character_type is not None:
         me.conn.send_tcp(game_cmd_opp(peer.character_type))
     if peer.ready:
-        me.conn.send_tcp(game_cmd_rdy(peer.ready_value))
+        map_id = match.map_id if match.map_id is not None else (match.match_id % 5)
+        me.conn.send_tcp(game_cmd_rdy(map_id))
     if match.lded_sent:
         me.conn.send_tcp(game_cmd_lded())
-    if match.rnds_sent:
-        me.conn.send_tcp(game_cmd_rnds(match.round_no))
-    if match.scnt_value is not None:
-        me.conn.send_tcp(game_cmd_scnt(match.scnt_value))
-    if match.rndo_sent:
-        me.conn.send_tcp(game_cmd_rndo())
+    if match.rnds_sent and match.round_started:
+        me.conn.send_tcp(game_cmd_rnds(match.round_number))
+        # Send a fresh su snapshot so the late-arriving client sees current state
+        su_pkt = _build_su_packet(match)
+        me.conn.send_tcp(su_pkt, quiet=True)
 
 
 def match_prefight_ready(match):
     if not match.full():
         return False
-
     for idx in (1, 2):
         player = match.get(idx)
         if not player or getattr(player.conn, "closed", False):
@@ -537,21 +984,18 @@ def match_prefight_ready(match):
             return False
         if not player.ready:
             return False
-
     return True
 
 
 def match_load_ready(match):
     if not match.full():
         return False
-
     for idx in (1, 2):
         player = match.get(idx)
         if not player:
             return False
         if not (player.loaded or player.fr_progress >= 100):
             return False
-
     return True
 
 
@@ -559,114 +1003,58 @@ def maybe_schedule_round_start(match, reason=""):
     with STATE_LOCK:
         if not match.full():
             return
-        if match.round_sequence_started or match.round_live or match.rndo_sent:
+        if match.round_sequence_started or match.round_live or match.round_started:
             return
         if not match_prefight_ready(match):
             return
         if not match_load_ready(match):
             return
-
         match.round_sequence_started = True
         mid = match.match_id
         round_no = match.round_no
 
     debug_print(f"[GAME] Match {mid} scheduling round start (reason={reason or 'ready'})")
-
-    def do_round_start_sequence():
-        time.sleep(ROUND_LDED_DELAY_SECS)
-        with STATE_LOCK:
-            current = MATCHES.get(mid)
-            if not current:
-                return
-            current.lded_sent = True
-            for mp in (current.get(1), current.get(2)):
-                if mp and not getattr(mp.conn, "closed", False):
-                    mp.conn.send_tcp(game_cmd_lded())
-
-        time.sleep(ROUND_RNDS_DELAY_SECS)
-        with STATE_LOCK:
-            current = MATCHES.get(mid)
-            if not current:
-                return
-            current.rnds_sent = True
-            for mp in (current.get(1), current.get(2)):
-                if mp and not getattr(mp.conn, "closed", False):
-                    mp.conn.send_tcp(game_cmd_rnds(round_no))
-
-        for value in (3, 2, 1):
-            time.sleep(ROUND_SCNT_DELAY_SECS)
-            with STATE_LOCK:
-                current = MATCHES.get(mid)
-                if not current:
-                    return
-                current.scnt_sent = True
-                current.scnt_value = value
-                for mp in (current.get(1), current.get(2)):
-                    if mp and not getattr(mp.conn, "closed", False):
-                        mp.conn.send_tcp(game_cmd_scnt(value))
-
-        time.sleep(ROUND_RNDO_DELAY_SECS)
-        with STATE_LOCK:
-            current = MATCHES.get(mid)
-            if not current:
-                return
-            # IMPORTANT: rndo is NOT a round-start packet.
-            # In the client, incoming rndo is handled as round-result / round-over
-            # data and immediately drives DRAW / WIN / LOSE / TKO UI based on its params.
-            # Sending bare %xt%rndo% here makes the clients interpret missing params as 0,
-            # which produces an immediate DRAW as soon as the countdown completes.
-            # After the last countdown tick, the round simply becomes live; do not emit rndo.
-            current.round_live = True
-            current.round_time_left = 99
-            current.clock_generation += 1
-            generation = current.clock_generation
-            for mp in (current.get(1), current.get(2)):
-                if mp and not getattr(mp.conn, "closed", False):
-                    mp.conn.send_tcp(game_cmd_ct(current.round_time_left), quiet=True)
-            debug_print(f"[GAME] Match {mid} countdown complete; round is now live (no rndo sent, ct=99)")
-        start_match_clock(mid, generation)
-
-    threading.Thread(target=do_round_start_sequence, daemon=True).start()
+    threading.Thread(target=_do_round_start_sequence, args=(mid, round_no), daemon=True).start()
 
 
-def start_match_clock(match_id, generation):
-    def run_clock():
-        while True:
-            time.sleep(1.0)
-            with STATE_LOCK:
-                current = MATCHES.get(match_id)
-                if not current:
-                    return
-                if current.clock_generation != generation:
-                    return
-                if not current.round_live:
-                    return
-                if current.round_time_left <= 0:
-                    return
-                current.round_time_left -= 1
-                packet = game_cmd_ct(current.round_time_left)
-                for mp in (current.get(1), current.get(2)):
-                    if mp and not getattr(mp.conn, "closed", False):
-                        mp.conn.send_tcp(packet, quiet=True)
-    threading.Thread(target=run_clock, daemon=True).start()
+def _do_round_start_sequence(mid, round_no):
+    """Thread: brief delay, then lded → startRound (rnds + first su).
+    No server-side countdown — client handles that on receiving rnds."""
+    # Brief delay so both clients are ready before game packets arrive.
+    time.sleep(ROUND_LDED_DELAY_SECS)
 
-
-def emit_su(match):
     with STATE_LOCK:
-        current = MATCHES.get(match.match_id)
-        if not current:
+        match = MATCHES.get(mid)
+        if not match:
             return
-        current.su_seq += 1
-        seq = current.su_seq
-        p1 = current.get(1)
-        p2 = current.get(2)
-        p1_pad = p1.last_cu_bits if p1 else 0
-        p2_pad = p2.last_cu_bits if p2 else 0
-        packet = game_cmd_su(seq, p1_pad, p2_pad)
-        recipients = [p1, p2]
-    for mp in recipients:
+        match.lded_sent = True
+        _broadcast(match, game_cmd_lded())
+
+    # Small gap then start round (matches JS tryStartLoaded → startRound sequence)
+    time.sleep(0.15)
+
+    with STATE_LOCK:
+        match = MATCHES.get(mid)
+        if not match or match.round_started:
+            return
+        match.round_live = True
+        match.rnds_sent = True
+        rnds_pkt, su_pkt = game_start_round(match)
+        debug_print(f"[GAME] Match {mid} round {match.round_number} started")
+
+    _broadcast(match, rnds_pkt)
+    _broadcast(match, su_pkt, quiet=True)
+
+
+def _broadcast(match, packet, quiet=False):
+    """Send packet to all connected players in match."""
+    for idx in (1, 2):
+        mp = match.get(idx)
         if mp and not getattr(mp.conn, "closed", False):
-            mp.conn.send_tcp(packet, quiet=True)
+            try:
+                mp.conn.send_tcp(packet, quiet=quiet)
+            except Exception:
+                pass
 
 
 def notify_match_ready(match):
@@ -674,11 +1062,10 @@ def notify_match_ready(match):
     p2 = match.get(2)
     if not p1 or not p2:
         return
-
     p1.conn.send_tcp(xt_wrapper_opponent_join(match.match_id, p2.player_index, p2.nick))
     p2.conn.send_tcp(xt_wrapper_opponent_join(match.match_id, p1.player_index, p1.nick))
 
-    def delayed_wrapper_start():
+    def delayed_start():
         time.sleep(WRAPPER_START_DELAY_SECS)
         with STATE_LOCK:
             current = MATCHES.get(match.match_id)
@@ -689,7 +1076,7 @@ def notify_match_ready(match):
                 if mp and not getattr(mp.conn, "closed", False):
                     mp.conn.send_tcp(xt_wrapper_game_start())
 
-    threading.Thread(target=delayed_wrapper_start, daemon=True).start()
+    threading.Thread(target=delayed_start, daemon=True).start()
 
 
 def remove_match_if_empty(match_id):
@@ -698,22 +1085,15 @@ def remove_match_if_empty(match_id):
         if not match:
             return
         if not match.players:
-            if match.load_fallback_timer is not None:
-                try:
-                    match.load_fallback_timer.cancel()
-                except Exception:
-                    pass
             MATCHES.pop(match_id, None)
 
 
 def cleanup_handler_from_match(handler, explicit_quit=False):
     global WAITING_MATCH_ID
-
     with STATE_LOCK:
         mid = getattr(handler, "match_id", None)
         if mid is None:
             return
-
         match = MATCHES.get(mid)
         if not match:
             handler.match_id = None
@@ -725,7 +1105,6 @@ def cleanup_handler_from_match(handler, explicit_quit=False):
 
         my_index = getattr(handler, "player_index", None)
         peer = match.other(my_index) if my_index in (1, 2) else None
-
         if my_index in match.players:
             match.players.pop(my_index, None)
 
@@ -745,8 +1124,6 @@ def cleanup_handler_from_match(handler, explicit_quit=False):
         if not match.players:
             MATCHES.pop(mid, None)
             return
-
-        # One player remains: make this the waiting match again.
         if len(match.players) == 1:
             remaining = next(iter(match.players.values()))
             if remaining and not getattr(remaining.conn, "closed", False):
@@ -758,7 +1135,6 @@ def cleanup_handler_from_match(handler, explicit_quit=False):
 # ---------- Policy server ----------
 
 class FlashPolicyHandler(StreamRequestHandler):
-
     def handle(self):
         try:
             self.request.settimeout(5)
@@ -768,10 +1144,8 @@ class FlashPolicyHandler(StreamRequestHandler):
                 if not chunk:
                     break
                 data += chunk
-
             text = data.decode(errors="replace").strip("\x00").strip()
             debug_print(f"[POLICY] Received: {text}")
-
             if is_policy_request(text):
                 response = socket_policy_xml(
                     f"{DEFAULT_TCP_PORT},{DEFAULT_HTTP_PORT},{DEFAULT_STATIC_PORT},{DEFAULT_POLICY_PORT}"
@@ -800,10 +1174,8 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         self.match_player = None
         self.closed = False
         self.login_done = False
-
         with STATE_LOCK:
             TCP_CLIENTS.add(self)
-
         debug_print(f"[TCP] Connection from {self.addr}")
 
     def finish(self):
@@ -818,37 +1190,25 @@ class SmartFoxTCPHandler(StreamRequestHandler):
     def complete_login(self, zone="Game", raw_nick="", password="find", send_rndk=False):
         if self.login_done:
             return
-
         self.login_done = True
-
         uid = self.uid or make_uid()
         nick = self.nick or sanitize_nick(raw_nick, uid)
-
         self.uid = uid
         self.nick = nick
         self.zone = zone or "Game"
         self.password = password or "find"
-
-        debug_print(f"[TCP] login -> uid={uid} nick={nick!r} zone={self.zone!r} pword={self.password!r}")
-
-        # Keep this off by default. Earlier evidence showed rndK before login can break the client.
+        debug_print(f"[TCP] login -> uid={uid} nick={nick!r} zone={self.zone!r}")
         if send_rndk:
             self.send_tcp(rndK_msg())
             time.sleep(0.03)
-
-        # Preserve the sequence that previously worked once the client had logged in naturally.
         self.send_tcp(logOK_msg(uid, nick))
         time.sleep(0.03)
-
         self.send_tcp(rmList_msg())
         time.sleep(0.03)
-
         self.send_tcp(joinOK_msg(uid, room_id=LOBBY_ROOM_ID, nick=nick, pid=-1))
         time.sleep(0.03)
-
         self.send_tcp(ucount_msg(room_id=LOBBY_ROOM_ID, count=current_logged_in_count()))
         time.sleep(0.03)
-
         self.send_tcp(
             json.dumps(
                 {"t": "xt", "b": {"o": {"_cmd": "_logOK", "id": LOBBY_ROOM_ID, "name": nick}}},
@@ -880,7 +1240,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             self.closed = True
             cleanup_handler_from_match(self, explicit_quit=False)
             if self.uid:
-                debug_print(f"[TCP] Client {self.addr} (uid {self.uid}, nick {self.nick}) disconnected")
+                debug_print(f"[TCP] Client {self.addr} (uid {self.uid}) disconnected")
             else:
                 debug_print(f"[TCP] Client {self.addr} disconnected")
 
@@ -890,7 +1250,6 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                 f"{DEFAULT_TCP_PORT},{DEFAULT_HTTP_PORT},{DEFAULT_STATIC_PORT},{DEFAULT_POLICY_PORT}"
             ))
             return
-
         if frame.startswith("<"):
             self.process_xml(frame)
             return
@@ -898,7 +1257,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             self.process_xt_str(frame)
             return
         if frame.startswith("{"):
-            self.process_json(frame)
+            debug_print(f"[TCP] Unhandled JSON frame: {frame}")
             return
         debug_print(f"[TCP] Unhandled non-XML frame: {frame}")
 
@@ -908,22 +1267,18 @@ class SmartFoxTCPHandler(StreamRequestHandler):
 
         if "verChk" in xml:
             self.send_tcp(apiOK_msg())
-
             def send_delayed_rndk():
                 time.sleep(0.20)
                 if self.closed or self.login_done:
                     return
                 debug_print("[TCP] Sending delayed rndK after apiOK")
                 self.send_tcp(rndK_msg())
-
             threading.Thread(target=send_delayed_rndk, daemon=True).start()
             return
 
         if action == "login" or "<login" in xml:
             if self.login_done:
-                debug_print("[TCP] Duplicate login ignored")
                 return
-
             zone, raw_nick, password = parse_login(xml)
             self.complete_login(zone=zone, raw_nick=raw_nick, password=password, send_rndk=False)
             return
@@ -942,7 +1297,6 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             return
 
         if action == "leaveRoom":
-            debug_print("[TCP] leaveRoom received")
             return
 
         if "roundTripBench" in xml or "roundTrip" in xml:
@@ -954,10 +1308,9 @@ class SmartFoxTCPHandler(StreamRequestHandler):
     def process_xt_str(self, frame):
         msg = parse_client_xt_frame(frame)
         if not msg:
-            debug_print(f"[TCP] Bad XT STR frame: {frame}")
+            debug_print(f"[TCP] Bad XT frame: {frame}")
             return
-
-        debug_print(f"[TCP] XT STR parsed: {msg}")
+        debug_print(f"[TCP] XT parsed: {msg}")
         ext = msg["ext"]
         cmd = msg["cmd"]
         params = msg["params"]
@@ -971,70 +1324,49 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             return
 
         if cmd == "rgf":
-            old_mid = getattr(self, "match_id", None)
-            match, full, created = ensure_player_joined_match(self)
-            if not self.match_player:
-                self.match_player = match.get(self.player_index)
-
-            if created:
-                debug_print(f"[MM] Created match {match.match_id} as P{self.player_index} ({self.nick})")
-            elif old_mid == match.match_id and not full:
-                debug_print(f"[MM] Reusing waiting match {match.match_id} as P{self.player_index} ({self.nick})")
-            else:
-                debug_print(f"[MM] Joined match {match.match_id} as P{self.player_index} ({self.nick})")
-
-            self.send_tcp(xt_wrapper_game_join(match.match_id, self.player_index))
-
-            if full:
-                p1 = match.get(1)
-                p2 = match.get(2)
-                if p1 and p2:
-                    debug_print(f"[MM] Match {match.match_id} paired: P1={p1.nick} vs P2={p2.nick}")
-                notify_match_ready(match)
-            else:
-                debug_print(f"[MM] Match {match.match_id} waiting for opponent")
+            self._do_rgf()
             return
 
         if cmd == "ka":
             return
 
-        debug_print(f"[TCP] Unhandled XT STR command: ext={ext!r} cmd={cmd!r}")
+        debug_print(f"[TCP] Unhandled XT: ext={ext!r} cmd={cmd!r}")
+
+    def _do_rgf(self):
+        old_mid = getattr(self, "match_id", None)
+        match, full, created = ensure_player_joined_match(self)
+        if not self.match_player:
+            self.match_player = match.get(self.player_index)
+        if created:
+            debug_print(f"[MM] Created match {match.match_id} as P{self.player_index} ({self.nick})")
+        else:
+            debug_print(f"[MM] Joined match {match.match_id} as P{self.player_index} ({self.nick})")
+        self.send_tcp(xt_wrapper_game_join(match.match_id, self.player_index))
+        if full:
+            p1 = match.get(1)
+            p2 = match.get(2)
+            if p1 and p2:
+                debug_print(f"[MM] Match {match.match_id} paired: P1={p1.nick} vs P2={p2.nick}")
+            notify_match_ready(match)
+        else:
+            debug_print(f"[MM] Match {match.match_id} waiting for opponent")
 
     def handle_lobby_xt(self, cmd, params):
         if cmd == "rlj":
             self.send_tcp(xt_server_msg("_ljs"))
             return
-
         if cmd == "rlp":
             self.send_tcp(xt_server_msg("_slp"))
             return
-
         if cmd == "rgf":
-            match, full, created = ensure_player_joined_match(self)
-            if not self.match_player:
-                self.match_player = match.get(self.player_index)
-
-            debug_print(f"[MM] {'Created' if created else 'Joined'} match {match.match_id} as P{self.player_index} ({self.nick})")
-            self.send_tcp(xt_wrapper_game_join(match.match_id, self.player_index))
-
-            if full:
-                p1 = match.get(1)
-                p2 = match.get(2)
-                if p1 and p2:
-                    debug_print(f"[MM] Match {match.match_id} paired: P1={p1.nick} vs P2={p2.nick}")
-                notify_match_ready(match)
-            else:
-                debug_print(f"[MM] Match {match.match_id} waiting for opponent")
+            self._do_rgf()
             return
-
         if cmd == "rgq":
             cleanup_handler_from_match(self, explicit_quit=True)
             return
-
         if cmd == "ka":
             return
-
-        debug_print(f"[TCP] Unhandled Lobby XT command: {cmd}")
+        debug_print(f"[TCP] Unhandled Lobby XT: {cmd}")
 
     def broadcast_cngame_to_match(self, match, cmd, params, quiet=False):
         packet = xt_cngame_msg(match.match_id, cmd, *params)
@@ -1053,13 +1385,13 @@ class SmartFoxTCPHandler(StreamRequestHandler):
     def handle_cngame_xt(self, cmd, params):
         match = get_match_for_handler(self)
         if not match:
-            debug_print(f"[TCP] cnGame {cmd} ignored because client is not assigned to a match")
+            debug_print(f"[TCP] cnGame {cmd} ignored: not in a match")
             return
 
         player = match.get(self.player_index)
         peer = match.other(self.player_index)
         if not player:
-            debug_print(f"[TCP] cnGame {cmd} ignored because match state is missing player record")
+            debug_print(f"[TCP] cnGame {cmd} ignored: missing player record")
             return
 
         if cmd == "rgq":
@@ -1069,13 +1401,16 @@ class SmartFoxTCPHandler(StreamRequestHandler):
 
         first_seen = not player.cn_seen
         player.cn_seen = True
-
         if first_seen:
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} entered cnGame")
             flush_peer_state_to_player(match, player.player_index)
 
+        # Utility: value from params considering that params[0] is room_id-equivalent for
+        # most cnGame client packets: %xt%cnGame%cmd%room%val% → params=["val"]
+        # But for cu: params=["frame","pad"] (two values).
         value = params[1] if len(params) > 1 else (params[0] if params else None)
 
+        # ------------------------------------------------------------------ pi
         if cmd == "pi":
             player.ping = parse_int(value, 0)
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} pi={player.ping}")
@@ -1084,32 +1419,35 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             maybe_schedule_round_start(match, reason="pi")
             return
 
+        # ----------------------------------------------------------------- typ
         if cmd == "typ":
             player.character_type = parse_int(value, 0)
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} typ={player.character_type}")
-            # Preserve original cnGame traffic for both clients. The game appears to
-            # route live/network state through server-returned packets, not pure peer relay.
+            # Relay raw cnGame packet AND send synthetic opp to peer.
             self.broadcast_cngame_to_match(match, "typ", params, quiet=True)
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
                 peer.conn.send_tcp(game_cmd_opp(player.character_type))
             maybe_schedule_round_start(match, reason="typ")
             return
 
+        # ----------------------------------------------------------------- rdy
         if cmd == "rdy":
             player.ready = True
             player.ready_value = parse_int(value, 1)
-            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rdy={player.ready_value}")
-            self.broadcast_cngame_to_match(match, "rdy", params, quiet=True)
+            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rdy")
+            # Compute and store mapId (chooseMap in cnGame.as = roomId % 5)
+            if match.map_id is None:
+                match.map_id = match.match_id % 5
+            # Send rdy + mapId to opponent (not a raw relay)
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
-                peer.conn.send_tcp(game_cmd_rdy(player.ready_value), quiet=True)
+                peer.conn.send_tcp(game_cmd_rdy(match.map_id))
             maybe_schedule_round_start(match, reason="rdy")
             return
 
+        # ------------------------------------------------------------------ fr
         if cmd == "fr":
-            seq = params[0] if len(params) > 0 else "0"
             raw_value = params[1] if len(params) > 1 else (params[0] if params else "0")
             progress = parse_progress(raw_value)
-
             if not match.round_sequence_started and not match.round_live:
                 player.fr_progress = max(player.fr_progress, progress)
                 debug_print(
@@ -1117,15 +1455,10 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                     f"fr={progress} (max={player.fr_progress})"
                 )
                 maybe_schedule_round_start(match, reason="fr")
-            else:
-                debug_print(
-                    f"[GAME] Match {match.match_id} P{player.player_index} "
-                    f"live fr seq={seq} value={raw_value}"
-                )
-
             self.broadcast_cngame_to_match(match, "fr", params, quiet=True)
             return
 
+        # ---------------------------------------------------------------- strt
         if cmd == "strt":
             player.loaded = True
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} strt=loaded")
@@ -1133,29 +1466,20 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             maybe_schedule_round_start(match, reason="strt")
             return
 
+        # ---------------------------------------------------------------- rmch
         if cmd == "rmch":
             player.rematch = True
-            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} requested rematch")
+            debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rematch")
             if peer and peer.cn_seen:
                 peer.conn.send_tcp(game_cmd_rmch())
             if match.full() and all(p.rematch for p in match.players.values()):
+                # Both agreed — reset game state for new round
+                game_reset_for_rematch(match)
                 match.round_no += 1
                 match.round_sequence_started = False
                 match.round_live = False
                 match.lded_sent = False
                 match.rnds_sent = False
-                match.scnt_sent = False
-                match.scnt_value = None
-                match.rndo_sent = False
-                match.su_seq = 0
-                match.round_time_left = 99
-                match.clock_generation += 1
-                if match.load_fallback_timer is not None:
-                    try:
-                        match.load_fallback_timer.cancel()
-                    except Exception:
-                        pass
-                    match.load_fallback_timer = None
                 for mp in match.players.values():
                     mp.ready = False
                     mp.ready_value = 1
@@ -1164,42 +1488,62 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                     mp.rematch = False
             return
 
+        # ------------------------------------------------------------------ cu
         if cmd == "cu":
-            frame = parse_int(params[0], 0) if len(params) >= 1 else 0
+            # cu format: %xt%cnGame%cu%<room>%<frame>%<pad_bits>%
+            # params[0]=frame (client-local counter, ignored by server sim)
+            # params[1]=pad bitmask (hasBit(bits,N) selects actions)
             pad_bits = parse_int(params[1], 0) if len(params) >= 2 else 0
-            player.last_cu_frame = frame
             player.last_cu_bits = pad_bits
-            if frame % 60 == 0:
-                debug_print(
-                    f"[GAME] Match {match.match_id} P{player.player_index} "
-                    f"cu frame={frame} pad={pad_bits}"
-                )
-            # IMPORTANT: cu is not a world-state packet. The second param is a pad/input bitmask
-            # (the logs show directional/button bits such as 1/2/4/8 and 16384/32768 changing
-            # with key presses), so blindly relaying cnGame cu does not drive the remote sim.
-            # Feed both clients the server-returned sequenced pad stream instead.
-            emit_su(match)
+
+            # Fighter index: player_index is 1-based; fighters[] is 0-based
+            fi = player.player_index - 1  # 0 or 1
+
+            su_pkt = None
+            extra_pkts = []
+            resolve_pkts = []
+
+            with STATE_LOCK:
+                if match.round_started:
+                    match.fighters[fi].last_key_bits = pad_bits
+                    extra_pkts = run_simulation(match)
+                    # Check for pending round resolution (ROUND_END_DELAY_MS elapsed)
+                    if match._resolve_pending and match.round_resolved:
+                        match._resolve_pending = False
+                        rndo_pkts, match_winner = _build_rndo_packets(match)
+                        resolve_pkts = rndo_pkts
+                        if match_winner == -1:
+                            # Not over yet — start next round
+                            rnds_pkt, su_pkt_new = game_start_round(match)
+                            resolve_pkts.append(rnds_pkt)
+                            resolve_pkts.append(su_pkt_new)
+                    elif match.round_started:
+                        su_pkt = _build_su_packet(match)
+                        match.next_su_id += 1
+
+            # Send all packets outside the lock
+            for pkt in extra_pkts:
+                _broadcast(match, pkt, quiet=True)
+            for pkt in resolve_pkts:
+                _broadcast(match, pkt)
+            if su_pkt:
+                _broadcast(match, su_pkt, quiet=True)
             return
 
-        if cmd == "ka":
+        # ------------------------------------------------------------------ ka / cl / ct / box
+        if cmd in ("ka", "cl", "ct", "box"):
             return
 
+        # -------- Unknown: raw-relay to match (fx, cmbo, shk, sups, etc.) ----
         relayed = self.broadcast_cngame_to_match(
-            match,
-            cmd,
-            params,
-            quiet=(cmd in CNGAME_QUIET_RELAY),
+            match, cmd, params, quiet=(cmd in CNGAME_QUIET_RELAY)
         )
         if relayed:
             if cmd not in CNGAME_QUIET_RELAY:
-                debug_print(f"[GAME] Relayed cnGame cmd={cmd} from P{player.player_index} params={params}")
+                debug_print(f"[GAME] Relayed cnGame cmd={cmd} from P{player.player_index}")
             return
 
-        debug_print(f"[TCP] Unhandled cnGame command: {cmd} params={params}")
-
-
-    def process_json(self, text):
-        debug_print(f"[TCP] Unhandled inbound JSON frame: {text}")
+        debug_print(f"[TCP] Unhandled cnGame cmd={cmd} params={params}")
 
     def send_tcp(self, payload, quiet=False):
         if payload is None or self.closed:
@@ -1220,6 +1564,9 @@ class ThreadedTCPServer(ThreadingTCPServer):
 
 
 # ---------- HTTP BlueBox server ----------
+
+from http.server import HTTPServer as _HTTPServer
+
 
 class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
     server_version = "TKOBlueBox/1.0"
@@ -1329,7 +1676,7 @@ class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
         return self._send_text("")
 
 
-class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+class ThreadedHTTPServer(ThreadingMixIn, _HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
@@ -1341,7 +1688,7 @@ class QuietStaticHandler(SimpleHTTPRequestHandler):
         debug_print("[STATIC] " + fmt % args)
 
 
-class ThreadedStaticHTTPServer(ThreadingMixIn, HTTPServer):
+class ThreadedStaticHTTPServer(ThreadingMixIn, _HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
@@ -1350,68 +1697,50 @@ class ThreadedStaticHTTPServer(ThreadingMixIn, HTTPServer):
 
 def run_servers(bind_host, tcp_port, http_port, static_dir=None, static_port=None, policy_port=DEFAULT_POLICY_PORT):
     policy_server = ThreadedTCPServer((bind_host, policy_port), FlashPolicyHandler)
-    policy_thread = threading.Thread(target=policy_server.serve_forever, name="policy-server", daemon=True)
-    policy_thread.start()
+    threading.Thread(target=policy_server.serve_forever, name="policy-server", daemon=True).start()
     debug_print(f"Flash policy server listening on {bind_host}:{policy_port}")
 
     tcp_server = ThreadedTCPServer((bind_host, tcp_port), SmartFoxTCPHandler)
-    tcp_thread = threading.Thread(target=tcp_server.serve_forever, name="tcp-server", daemon=True)
-    tcp_thread.start()
+    threading.Thread(target=tcp_server.serve_forever, name="tcp-server", daemon=True).start()
     debug_print(f"SmartFox TCP emulator listening on {bind_host}:{tcp_port}")
 
     http_server = ThreadedHTTPServer((bind_host, http_port), BlueBoxHTTPRequestHandler)
-    http_thread = threading.Thread(target=http_server.serve_forever, name="http-server", daemon=True)
-    http_thread.start()
+    threading.Thread(target=http_server.serve_forever, name="http-server", daemon=True).start()
     debug_print(f"BlueBox HTTP emulator listening on {bind_host}:{http_port}")
 
     static_server = None
     if static_dir:
         handler = partial(QuietStaticHandler, directory=static_dir)
         static_server = ThreadedStaticHTTPServer((bind_host, static_port), handler)
-        static_thread = threading.Thread(target=static_server.serve_forever, name="static-server", daemon=True)
-        static_thread.start()
-        debug_print(f"Static file server listening on {bind_host}:{static_port} serving {static_dir}")
+        threading.Thread(target=static_server.serve_forever, name="static-server", daemon=True).start()
+        debug_print(f"Static file server on {bind_host}:{static_port} serving {static_dir}")
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        debug_print("Shutting down servers...")
+        debug_print("Shutting down...")
     finally:
-        try:
-            policy_server.shutdown()
-            policy_server.server_close()
-        except Exception:
-            pass
-        try:
-            tcp_server.shutdown()
-            tcp_server.server_close()
-        except Exception:
-            pass
-        try:
-            http_server.shutdown()
-            http_server.server_close()
-        except Exception:
-            pass
-        if static_server:
-            try:
-                static_server.shutdown()
-                static_server.server_close()
-            except Exception:
-                pass
+        for srv in [policy_server, tcp_server, http_server, static_server]:
+            if srv:
+                try:
+                    srv.shutdown()
+                    srv.server_close()
+                except Exception:
+                    pass
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TKO SmartFox/BlueBox emulator with multiplayer relay")
-    parser.add_argument("--bind", default=DEFAULT_BIND, help="Bind address for TCP/HTTP servers (default 0.0.0.0)")
-    parser.add_argument("--advertise-ip", default=None, help="IP address to write into cnsl.xml; defaults to auto-detect")
-    parser.add_argument("--tcp-port", type=int, default=DEFAULT_TCP_PORT, help="SmartFox TCP port (default 9339)")
-    parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT, help="BlueBox HTTP port (default 8080)")
-    parser.add_argument("--policy-port", type=int, default=DEFAULT_POLICY_PORT, help="Flash socket policy port (default 843)")
-    parser.add_argument("--send-all-http", action="store_true", help="HTTP poll: send all queued messages at once")
-    parser.add_argument("--static-dir", default=None, help="Optional directory to serve as a simple HTTP file server")
-    parser.add_argument("--static-port", type=int, default=DEFAULT_STATIC_PORT, help="Static file server port (default 8000)")
-    parser.add_argument("--write-cnsl", default=None, help="Optional path to write cnsl.xml; if omitted and --static-dir is set, writes <static-dir>/cnsl.xml")
+    parser = argparse.ArgumentParser(description="TKO SmartFox/BlueBox emulator")
+    parser.add_argument("--bind", default=DEFAULT_BIND)
+    parser.add_argument("--advertise-ip", default=None)
+    parser.add_argument("--tcp-port", type=int, default=DEFAULT_TCP_PORT)
+    parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
+    parser.add_argument("--policy-port", type=int, default=DEFAULT_POLICY_PORT)
+    parser.add_argument("--send-all-http", action="store_true")
+    parser.add_argument("--static-dir", default=None)
+    parser.add_argument("--static-port", type=int, default=DEFAULT_STATIC_PORT)
+    parser.add_argument("--write-cnsl", default=None)
     args = parser.parse_args()
 
     global HTTP_SEND_ALL_QUEUED
@@ -1428,16 +1757,14 @@ def main():
         write_cnsl_xml(cnsl_target, advertise_ip)
         debug_print(f"Wrote cnsl.xml to: {cnsl_target}")
 
-    debug_print("Starting TKO server")
+    debug_print("Starting TKO server (PATCHED)")
     debug_print("Bind host:", args.bind)
     debug_print("Advertise IP:", advertise_ip)
     debug_print("TCP (SmartFox) port:", args.tcp_port)
     debug_print("HTTP (BlueBox) port:", args.http_port)
     debug_print("Policy port:", args.policy_port)
-    if args.static_dir:
-        debug_print("Static file dir:", args.static_dir)
-        debug_print("Static file port:", args.static_port)
-    debug_print(f"Use this cnsl.xml entry: <server name=\"local\">{advertise_ip}</server>")
+    debug_print(f"su ticker: {SU_TICK_HZ} fps")
+    debug_print(f'Use this cnsl.xml entry: <server name="local">{advertise_ip}</server>')
 
     run_servers(
         bind_host=args.bind,
