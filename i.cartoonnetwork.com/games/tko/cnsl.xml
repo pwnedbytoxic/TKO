@@ -1,4 +1,4 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <servers>
-  <server name='local'>192.168.1.15</server>
+  <server name='local'>10.7.20.131</server>
 </servers>
