@@ -316,20 +316,17 @@ def game_cmd_scnt(value):
 
 
 def game_cmd_ct(seconds_left):
-    # Server control packets in this protocol consistently carry a leading 0 slot
-    # before the payload value (dl/opp/rdy/rnds/scnt all do). ct should match that
-    # shape so the client reads the countdown value from the expected position.
-    return xt_server_msg("ct", 0, max(0, parse_int(seconds_left, 0)))
+    # ct behaves like a plain short server command, not a 0-prefixed room/control packet.
+    # With the extra 0, the HUD only shows 0/1 instead of a 99->0 countdown.
+    return xt_server_msg("ct", max(0, parse_int(seconds_left, 0)))
 
 
-def game_cmd_su(msg_id, player_index, frame, pad_bits):
-    # Best-fit inference from the client state machine:
-    # - cu is client->server pad/input update (frame, bitmask)
-    # - su is server->clients sequenced input stream consumed by the net buffer
-    # Incoming server commands in this protocol use a leading dummy/control slot;
-    # without it the client appears to shift fields left (e.g. HUD timer and stage
-    # motion track frame counters instead of countdown/input state).
-    return xt_server_msg("su", 0, msg_id, player_index, frame, pad_bits)
+def game_cmd_su(msg_id, p1_pad_bits, p2_pad_bits):
+    # cu's second parameter is a pad/input bitmask. The first parameter is a client-local
+    # frame counter, which should NOT be mirrored back into the authoritative server sync.
+    # The closest-fit live format is a short server update keyed by a server sequence id
+    # plus both players' current pad states.
+    return xt_server_msg("su", msg_id, p1_pad_bits, p2_pad_bits)
 
 
 def game_cmd_rndo():
@@ -654,15 +651,19 @@ def start_match_clock(match_id, generation):
     threading.Thread(target=run_clock, daemon=True).start()
 
 
-def emit_su(match, player_index, frame, pad_bits):
+def emit_su(match):
     with STATE_LOCK:
         current = MATCHES.get(match.match_id)
         if not current:
             return
         current.su_seq += 1
         seq = current.su_seq
-        packet = game_cmd_su(seq, player_index, frame, pad_bits)
-        recipients = [current.get(1), current.get(2)]
+        p1 = current.get(1)
+        p2 = current.get(2)
+        p1_pad = p1.last_cu_bits if p1 else 0
+        p2_pad = p2.last_cu_bits if p2 else 0
+        packet = game_cmd_su(seq, p1_pad, p2_pad)
+        recipients = [p1, p2]
     for mp in recipients:
         if mp and not getattr(mp.conn, "closed", False):
             mp.conn.send_tcp(packet, quiet=True)
@@ -1177,7 +1178,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             # (the logs show directional/button bits such as 1/2/4/8 and 16384/32768 changing
             # with key presses), so blindly relaying cnGame cu does not drive the remote sim.
             # Feed both clients the server-returned sequenced pad stream instead.
-            emit_su(match, player.player_index, frame, pad_bits)
+            emit_su(match)
             return
 
         if cmd == "ka":

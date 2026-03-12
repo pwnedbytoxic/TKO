@@ -1,56 +1,71 @@
 # Titanic KungFu Offensive (TKO) Rehost
 
-This repository contains work-in-progress tooling for running **Titanic KungFu Offensive**, a discontinued Cartoon Network Flash game, as a rehosted server.
+This repository contains a work-in-progress Python emulator for **Titanic KungFu Offensive**, a discontinued Cartoon Network Flash game that originally relied on **SmartFoxServer 1.x**.
 
-The original game relied on **SmartFoxServer 1.x** for multiplayer functionality. Since the original servers are long gone, this project focuses on **recreating the server behavior** so the client can run again.
+The goal of the project is to restore the original multiplayer flow by recreating the networking stack the Flash client expects:
 
-The goal is to make the game playable locally by emulating the original networking stack used by the Flash client.
-
----
-
-# Current Status
-
-This project is **still in progress**, but the core connection flow is working.
-
-Current behavior:
-
-- Flash client loads correctly
-- SmartFox connection is established
-- Version check and login succeed
-- Room list is returned
-- Client reaches **"Checking Capacity"**
-
-At the moment the client stops at that stage, which means one or more expected SmartFox events are still missing.
-
-Progress is steady and the project should be **fully functional by mid-March**.
+- SmartFox XML socket traffic
+- BlueBox HTTP tunneling
+- Flash socket policy serving
+- enough game-specific `cnGame` behavior to reach a full multiplayer round
 
 ---
 
-# Future Plans
+## Current Status
 
-Once the server implementation is stable, the goal is to run a **public instance of the game server**.
+The project is **well past basic connectivity** and is now in the final multiplayer protocol-debugging phase.
 
-The plan is to host the server on my domain:
+### Working now
 
-```
-https://www.hoody.cx/playtko
-```
+- Flash client connects successfully
+- version check and login succeed
+- lobby / room list flow works
+- BlueBox fallback is implemented
+- two clients can join the same match
+- character select works
+- stage loading works
+- round intro / countdown flow works
+- the incorrect immediate **DRAW** at round start has been fixed
 
-This would allow players to connect to a live instance of the game again rather than only running it locally.
+### Current blocker
 
-For now, development is focused on getting the protocol implementation fully working.
+The game is now stuck in the **live round synchronization** stage.
+
+What this means in practice:
+
+- both players load into the same match
+- both characters drop into the arena
+- the round appears to begin
+- local input is reaching the server and affecting the scene
+- but the server is still not emitting the final live sync packet layout the client expects, so movement / camera / timer behavior is not yet correct
+
+In other words: **startup, matchmaking, and round bootstrapping mostly work; the remaining issue is authoritative in-round sync.**
 
 ---
 
-# How the Game Originally Worked
+## Multiplayer Findings So Far
 
-TKO used **SmartFoxServer 1.x**, which supported two connection methods.
+These are the main protocol discoveries from debugging the client and server:
+
+- `rndo` is **not** a round-start packet; sending it at startup causes the client to immediately resolve the round as a result screen
+- `cu` appears to carry **player input / pad bitfields**, not full world state
+- `fr` is not sufficient by itself to decide that live gameplay has started
+- the missing piece now appears to be the exact **server-returned live sync packet layout** used after the countdown
+- timer handling is also tied to the same live-sync phase and still needs final alignment
+
+This is why the project is now very close visually, but not yet fully playable.
+
+---
+
+## How the Original Game Connected
+
+TKO used **SmartFoxServer 1.x** with two transport paths.
 
 ### TCP Socket
 
 Primary multiplayer connection.
 
-```
+```text
 Port: 9339
 Protocol: SmartFox XML messages
 Delimiter: NULL byte (\x00)
@@ -60,149 +75,146 @@ Delimiter: NULL byte (\x00)
 
 Fallback method when direct sockets were blocked.
 
-```
+```text
 Endpoint: /BlueBox/HttpBox.do
 Port: 8080
 Transport: HTTP POST
 Parameter: sfsHttp
 ```
 
-Both communication paths are implemented in the emulator.
+The emulator implements both paths.
 
 ---
 
-# Repository Contents
+## Repository Contents
 
 ### `tko_server.py`
 
-Combined SmartFox server emulator.
+Combined SmartFox / BlueBox emulator.
 
-Features:
+Current responsibilities include:
 
-- SmartFox TCP socket server (port **9339**)
-- BlueBox HTTP tunneling server (port **8080**)
-- Basic SmartFox protocol implementation
-- Room and login simulation
-
-Currently implemented SmartFox events:
-
-```
-apiOK
-logOK
-rmList
-joinOK
-uCount
-roundTripRes
-```
-
-Handled client actions:
-
-```
-verChk
-login
-getRmList
-joinRoom
-autoJoin
-roundTripBench
-```
+- SmartFox TCP server
+- BlueBox HTTP tunnel server
+- Flash socket policy server
+- room / lobby handling
+- matchmaking
+- basic match orchestration
+- game-specific `cnGame` packet handling under active development
 
 ---
 
-# Running the Server
+## Running the Server
 
-Install Python 3 and run:
+Install Python 3, then run the server from the repository directory.
+
+### Usage example
 
 ```bash
-python sfs_bluebox_combined_v5.py
+python tko_server.py --bind 0.0.0.0 --advertise-ip 192.168.1.50 --write-cnsl "C:\path\to\tko\cnsl.xml"
 ```
 
-You should see:
+### What the main options do
 
+- `--bind`  
+  Bind address for the TCP, HTTP, and policy servers
+
+- `--advertise-ip`  
+  The IP address written into `cnsl.xml` so the Flash client knows which host to connect to
+
+- `--write-cnsl`  
+  Writes a `cnsl.xml` file for the client using the advertised IP
+
+### Other useful options
+
+```text
+--tcp-port      SmartFox TCP port (default: 9339)
+--http-port     BlueBox HTTP port (default: 8080)
+--policy-port   Flash socket policy port (default: 843)
+--static-dir    Optional directory to serve over HTTP
+--static-port   Static file server port (default: 8000)
+--send-all-http Send all queued BlueBox messages at once
 ```
-Starting combined SFS/BlueBox emulator v5
+
+### Expected startup output
+
+You should see output similar to:
+
+```text
+Starting TKO server
+Bind host: 0.0.0.0
+Advertise IP: 192.168.1.50
 TCP (SmartFox) port: 9339
 HTTP (BlueBox) port: 8080
-```
-
-The Flash client can then connect to:
-
-```
-127.0.0.1:9339
+Policy port: 843
+Use this cnsl.xml entry: <server name="local">192.168.1.50</server>
 ```
 
 ---
 
-# Development Notes
+## Client Setup
 
-This project uses:
+Point the game client at the generated `cnsl.xml` entry for your local server, for example:
 
-- **JPEXS Flash Decompiler** to inspect the client
-- Decompiled SWF XML exports to understand SmartFox handlers
-- Network logs to reconstruct the expected server responses
-
-Important client handler table discovered in the SWF:
-
-```
-apiOK
-logOK
-rmList
-joinOK
-uCount
-rndK
-roundTripRes
-userEnterRoom
-roomVarsUpdate
+```xml
+<server name="local">192.168.1.50</server>
 ```
 
-This helps identify which events the client expects during initialization.
+If you are hosting the XML yourself, make sure the client loads the updated file and that the advertised IP matches the machine running `tko_server.py`.
 
 ---
 
-# Known Missing Behavior
+## Development Notes
 
-The client currently stalls at:
+This project is being debugged by combining:
 
-```
-Checking Capacity
-```
+- packet logging from the emulator
+- SWF decompilation / XML exports
+- live testing in Ruffle and projector environments
+- comparison against surviving gameplay footage
 
-This likely means one of the following events is missing or malformed:
-
-```
-rndK
-roundTripRes
-roomVarsUpdate
-userEnterRoom
-```
-
-Work is ongoing to identify the exact packet sequence required by the client.
+The current work is focused almost entirely on matching the original in-round multiplayer packet flow closely enough for a full fight to play correctly.
 
 ---
 
-# Tools Used
+## Near-Term Goal
 
-- Flash Player Projector
-- Ruffle (for testing)
-- JPEXS Flash Decompiler
+The immediate goal is now **full multiplayer round completion**:
+
+- correct live movement
+- correct timer behavior
+- correct attacks / specials
+- correct round resolution
+- rematch / next-round handling
+
+Once that works, the remaining cleanup should be much smaller than the protocol work already completed.
+
+---
+
+## Future Plans
+
+Once the server implementation is stable, the long-term goal is to host a public instance so the game can be played without local setup.
+
+Planned location:
+
+```text
+https://www.hoody.cx/playtko
+```
+
+---
+
+## Tools Used
+
 - Python 3
+- Ruffle
+- Flash Player Projector
+- JPEXS Flash Decompiler
 - SmartFoxServer 1.x documentation
+- packet capture / protocol logging
 
 ---
 
-# Goal
-
-The immediate goal is to reach the **game lobby**.
-
-Longer term goals:
-
-- Character select
-- Matchmaking
-- Local multiplayer
-- Full game emulation
-
----
-
-# Disclaimer
+## Disclaimer
 
 This project is intended for **preservation and educational purposes only**.
 
