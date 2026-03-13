@@ -338,6 +338,10 @@ def game_cmd_dl(opponent_ping):
     return xt_server_msg("dl", 0, opponent_ping)
 
 
+def game_cmd_echo():
+    return xt_server_msg("echo")
+
+
 def game_cmd_opp(opponent_character_type):
     return xt_server_msg("opp", 0, opponent_character_type)
 
@@ -397,6 +401,10 @@ def game_cmd_su_snapshot(match_id, su_id, round_timer, f0, f1):
     min_x = min(f0.x, f1.x) - CAMERA_MARGIN
     max_x = max(f0.x, f1.x) + CAMERA_MARGIN
     cam = int(((min_x + max_x) / 2) - (SCREEN_WIDTH / 2))
+    if cam > min_x:
+        cam = int(min_x)
+    if cam + SCREEN_WIDTH < max_x:
+        cam = int(max_x - SCREEN_WIDTH)
     cam = max(0, min(LEVEL_WIDTH - SCREEN_WIDTH, cam))
     return xt_server_msg(
         "su", match_id,
@@ -753,10 +761,10 @@ def _build_rndo_packets(match):
 
     if winner == 1:
         f0.wins += 1
-        perfect = "true" if f1.health == 1000 else "false"
+        perfect = "true" if f0.health == 1000 else "false"
     elif winner == 2:
         f1.wins += 1
-        perfect = "true" if f0.health == 1000 else "false"
+        perfect = "true" if f1.health == 1000 else "false"
     else:
         perfect = "false"
 
@@ -824,6 +832,9 @@ def game_reset_for_rematch(match):
     match.next_su_id = 1
     match.pending_winner = 0
     match.pending_time_up = False
+    match.round_start_time = 0.0
+    match.round_end_time = 0.0
+    match.last_tick = 0.0
     for f in match.fighters:
         f.wins = 0
         f.last_key_bits = 0
@@ -848,6 +859,14 @@ class MatchPlayer:
     wrapper_start_sent: bool = False
     last_cu_frame: int = 0
     last_cu_bits: int = 0
+    client_lag: int = 0
+    last_client_msg_id: int = 0
+    sent_opp_character_type: int | None = None
+    sent_ready_map_id: int | None = None
+    sent_load_frame: int = -1
+    sent_loaded: bool = False
+    sent_rematch: bool = False
+    sent_opponent_ping: int | None = None
     created: float = field(default_factory=time.time)
 
 
@@ -960,13 +979,59 @@ def flush_peer_state_to_player(match, player_index):
     if peer.ready:
         map_id = match.map_id if match.map_id is not None else (match.match_id % 5)
         me.conn.send_tcp(game_cmd_rdy(map_id))
+    if peer.fr_progress >= 0:
+        me.conn.send_tcp(game_cmd_fr(peer.fr_progress))
     if match.lded_sent:
         me.conn.send_tcp(game_cmd_lded())
+    if peer.rematch:
+        me.conn.send_tcp(game_cmd_rmch())
     if match.rnds_sent and match.round_started:
         me.conn.send_tcp(game_cmd_rnds(match.round_number))
         # Send a fresh su snapshot so the late-arriving client sees current state
         su_pkt = _build_su_packet(match)
         me.conn.send_tcp(su_pkt, quiet=True)
+
+
+def sync_opponent_state_to_player(match, player, opponent):
+    if not player or not opponent or getattr(player.conn, "closed", False):
+        return
+
+    opponent_ping = opponent.ping if opponent.ping is not None else 0
+    if player.sent_opponent_ping != opponent_ping:
+        player.conn.send_tcp(game_cmd_dl(opponent_ping))
+        player.sent_opponent_ping = opponent_ping
+
+    if opponent.character_type is not None and player.sent_opp_character_type != opponent.character_type:
+        player.conn.send_tcp(game_cmd_opp(opponent.character_type))
+        player.sent_opp_character_type = opponent.character_type
+
+    if opponent.ready:
+        if match.map_id is None:
+            match.map_id = match.match_id % 5
+        if player.sent_ready_map_id != match.map_id:
+            player.conn.send_tcp(game_cmd_rdy(match.map_id))
+            player.sent_ready_map_id = match.map_id
+
+    if player.sent_load_frame != opponent.fr_progress:
+        player.conn.send_tcp(game_cmd_fr(opponent.fr_progress))
+        player.sent_load_frame = opponent.fr_progress
+
+    if opponent.loaded and not player.sent_loaded:
+        player.conn.send_tcp(game_cmd_lded())
+        player.sent_loaded = True
+
+    if opponent.rematch and not player.sent_rematch:
+        player.conn.send_tcp(game_cmd_rmch())
+        player.sent_rematch = True
+
+
+def reset_player_sync_state(player):
+    player.sent_opp_character_type = None
+    player.sent_ready_map_id = None
+    player.sent_load_frame = -1
+    player.sent_loaded = False
+    player.sent_rematch = False
+    player.sent_opponent_ping = None
 
 
 def match_prefight_ready(match):
@@ -999,40 +1064,66 @@ def match_load_ready(match):
     return True
 
 
+def try_force_load_handshake(match):
+    if match.round_started or not match.full():
+        return
+
+    p1 = match.get(1)
+    p2 = match.get(2)
+    if not p1 or not p2:
+        return
+    if not p1.ready or not p2.ready:
+        return
+    if p1.character_type is None or p2.character_type is None:
+        return
+
+    if not p1.loaded:
+        p1.fr_progress = 100
+        p1.loaded = True
+        p2.sent_load_frame = 100
+        if p2.cn_seen and not getattr(p2.conn, "closed", False):
+            p2.conn.send_tcp(game_cmd_fr(100))
+
+    if not p2.loaded:
+        p2.fr_progress = 100
+        p2.loaded = True
+        p1.sent_load_frame = 100
+        if p1.cn_seen and not getattr(p1.conn, "closed", False):
+            p1.conn.send_tcp(game_cmd_fr(100))
+
+
 def maybe_schedule_round_start(match, reason=""):
     with STATE_LOCK:
         if not match.full():
             return
         if match.round_sequence_started or match.round_live or match.round_started:
             return
+        try_force_load_handshake(match)
         if not match_prefight_ready(match):
             return
         if not match_load_ready(match):
             return
         match.round_sequence_started = True
         mid = match.match_id
-        round_no = match.round_no
-
     debug_print(f"[GAME] Match {mid} scheduling round start (reason={reason or 'ready'})")
-    threading.Thread(target=_do_round_start_sequence, args=(mid, round_no), daemon=True).start()
+    threading.Thread(target=_do_round_start_sequence, args=(mid,), daemon=True).start()
 
 
-def _do_round_start_sequence(mid, round_no):
+def _do_round_start_sequence(mid):
     """Thread: brief delay, then lded → startRound (rnds + first su).
     No server-side countdown — client handles that on receiving rnds."""
     # Brief delay so both clients are ready before game packets arrive.
-    time.sleep(ROUND_LDED_DELAY_SECS)
-
     with STATE_LOCK:
         match = MATCHES.get(mid)
         if not match:
             return
         match.lded_sent = True
         _broadcast(match, game_cmd_lded())
+        for mp in match.players.values():
+            reset_player_sync_state(mp)
+            mp.sent_loaded = True
 
     # Small gap then start round (matches JS tryStartLoaded → startRound sequence)
-    time.sleep(0.15)
-
     with STATE_LOCK:
         match = MATCHES.get(mid)
         if not match or match.round_started:
@@ -1404,6 +1495,8 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         if first_seen:
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} entered cnGame")
             flush_peer_state_to_player(match, player.player_index)
+        if params:
+            player.last_client_msg_id = parse_int(params[0], player.last_client_msg_id)
 
         # Utility: value from params considering that params[0] is room_id-equivalent for
         # most cnGame client packets: %xt%cnGame%cmd%room%val% → params=["val"]
@@ -1414,8 +1507,32 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         if cmd == "pi":
             player.ping = parse_int(value, 0)
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} pi={player.ping}")
-            if peer and peer.cn_seen and player.ping is not None:
-                peer.conn.send_tcp(game_cmd_dl(player.ping))
+            self.send_tcp(game_cmd_echo())
+            if peer:
+                sync_opponent_state_to_player(match, player, peer)
+            su_pkt = None
+            extra_pkts = []
+            resolve_pkts = []
+            with STATE_LOCK:
+                if match.round_started:
+                    extra_pkts = run_simulation(match)
+                    if match._resolve_pending and match.round_resolved:
+                        match._resolve_pending = False
+                        rndo_pkts, match_winner = _build_rndo_packets(match)
+                        resolve_pkts = rndo_pkts
+                        if match_winner == -1:
+                            rnds_pkt, su_pkt_new = game_start_round(match)
+                            resolve_pkts.append(rnds_pkt)
+                            resolve_pkts.append(su_pkt_new)
+                    elif match.round_started:
+                        su_pkt = _build_su_packet(match)
+                        match.next_su_id += 1
+            for pkt in extra_pkts:
+                _broadcast(match, pkt, quiet=True)
+            for pkt in resolve_pkts:
+                _broadcast(match, pkt)
+            if su_pkt:
+                _broadcast(match, su_pkt, quiet=True)
             maybe_schedule_round_start(match, reason="pi")
             return
 
@@ -1423,10 +1540,9 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         if cmd == "typ":
             player.character_type = parse_int(value, 0)
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} typ={player.character_type}")
-            # Relay raw cnGame packet AND send synthetic opp to peer.
-            self.broadcast_cngame_to_match(match, "typ", params, quiet=True)
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
                 peer.conn.send_tcp(game_cmd_opp(player.character_type))
+                peer.sent_opp_character_type = player.character_type
             maybe_schedule_round_start(match, reason="typ")
             return
 
@@ -1441,6 +1557,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             # Send rdy + mapId to opponent (not a raw relay)
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
                 peer.conn.send_tcp(game_cmd_rdy(match.map_id))
+                peer.sent_ready_map_id = match.map_id
             maybe_schedule_round_start(match, reason="rdy")
             return
 
@@ -1450,19 +1567,23 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             progress = parse_progress(raw_value)
             if not match.round_sequence_started and not match.round_live:
                 player.fr_progress = max(player.fr_progress, progress)
+                if player.fr_progress >= 100:
+                    player.loaded = True
                 debug_print(
                     f"[GAME] Match {match.match_id} P{player.player_index} "
                     f"fr={progress} (max={player.fr_progress})"
                 )
                 maybe_schedule_round_start(match, reason="fr")
-            self.broadcast_cngame_to_match(match, "fr", params, quiet=True)
+            if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
+                peer.conn.send_tcp(game_cmd_fr(player.fr_progress))
+                peer.sent_load_frame = player.fr_progress
             return
 
         # ---------------------------------------------------------------- strt
         if cmd == "strt":
             player.loaded = True
+            player.fr_progress = max(player.fr_progress, 100)
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} strt=loaded")
-            self.broadcast_cngame_to_match(match, "strt", params, quiet=True)
             maybe_schedule_round_start(match, reason="strt")
             return
 
@@ -1472,10 +1593,10 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rematch")
             if peer and peer.cn_seen:
                 peer.conn.send_tcp(game_cmd_rmch())
+                peer.sent_rematch = True
             if match.full() and all(p.rematch for p in match.players.values()):
                 # Both agreed — reset game state for new round
                 game_reset_for_rematch(match)
-                match.round_no += 1
                 match.round_sequence_started = False
                 match.round_live = False
                 match.lded_sent = False
@@ -1486,6 +1607,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                     mp.fr_progress = 0
                     mp.loaded = False
                     mp.rematch = False
+                    reset_player_sync_state(mp)
             return
 
         # ------------------------------------------------------------------ cu
@@ -1531,7 +1653,13 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             return
 
         # ------------------------------------------------------------------ ka / cl / ct / box
-        if cmd in ("ka", "cl", "ct", "box"):
+        if cmd == "cl":
+            player.client_lag = parse_int(value, player.client_lag)
+            if peer:
+                self.send_tcp(game_cmd_dl(peer.ping if peer.ping is not None else 0))
+            return
+
+        if cmd in ("ka", "ct", "box"):
             return
 
         # -------- Unknown: raw-relay to match (fx, cmbo, shk, sups, etc.) ----
@@ -1568,8 +1696,11 @@ class ThreadedTCPServer(ThreadingTCPServer):
 from http.server import HTTPServer as _HTTPServer
 
 
-class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
+class BlueBoxHTTPRequestHandler(SimpleHTTPRequestHandler):
     server_version = "TKOBlueBox/1.0"
+
+    def __init__(self, *args, directory=None, **kwargs):
+        super().__init__(*args, directory=directory, **kwargs)
 
     def log_message(self, fmt, *args):
         debug_print("[HTTP] " + fmt % args)
@@ -1589,6 +1720,18 @@ class BlueBoxHTTPRequestHandler(BaseHTTPRequestHandler):
         if isinstance(txt, str):
             txt = txt.encode("utf-8")
         self.wfile.write(txt)
+
+    def do_GET(self):
+        if self.path == "/BlueBox/HttpBox.do":
+            self.send_error(405, "BlueBox endpoint expects POST")
+            return
+        return super().do_GET()
+
+    def do_HEAD(self):
+        if self.path == "/BlueBox/HttpBox.do":
+            self.send_error(405, "BlueBox endpoint expects POST")
+            return
+        return super().do_HEAD()
 
     def do_POST(self):
         if self.path != "/BlueBox/HttpBox.do":
@@ -1704,9 +1847,11 @@ def run_servers(bind_host, tcp_port, http_port, static_dir=None, static_port=Non
     threading.Thread(target=tcp_server.serve_forever, name="tcp-server", daemon=True).start()
     debug_print(f"SmartFox TCP emulator listening on {bind_host}:{tcp_port}")
 
-    http_server = ThreadedHTTPServer((bind_host, http_port), BlueBoxHTTPRequestHandler)
+    http_root = static_dir or os.getcwd()
+    http_handler = partial(BlueBoxHTTPRequestHandler, directory=http_root)
+    http_server = ThreadedHTTPServer((bind_host, http_port), http_handler)
     threading.Thread(target=http_server.serve_forever, name="http-server", daemon=True).start()
-    debug_print(f"BlueBox HTTP emulator listening on {bind_host}:{http_port}")
+    debug_print(f"HTTP server listening on {bind_host}:{http_port} serving {http_root} with BlueBox at /BlueBox/HttpBox.do")
 
     static_server = None
     if static_dir:
