@@ -49,7 +49,7 @@ from urllib.parse import parse_qs, unquote_plus
 # ---------- Config ----------
 DEFAULT_BIND = "0.0.0.0"
 DEFAULT_TCP_PORT = 9339
-DEFAULT_HTTP_PORT = 8080
+DEFAULT_HTTP_PORT = 80
 DEFAULT_STATIC_PORT = 8000
 DEFAULT_POLICY_PORT = 843
 
