@@ -39,6 +39,7 @@ import socket
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, HTTPServer, SimpleHTTPRequestHandler
@@ -130,6 +131,24 @@ ROOMS = {
 SESSIONS_HTTP = {}
 TCP_CLIENTS = set()
 MATCHES = {}
+CHARACTER_DATA = {}
+
+
+@dataclass
+class CharacterAnimation:
+    id: int
+    name: str
+
+
+@dataclass
+class CharacterDefinition:
+    char_id: int
+    name: str
+    specials: dict = field(default_factory=dict)
+    effect_by_name: dict = field(default_factory=dict)
+    projectile_by_name: dict = field(default_factory=dict)
+    effects: list = field(default_factory=list)
+    projectiles: list = field(default_factory=list)
 
 
 # ---------- Helpers ----------
@@ -207,6 +226,20 @@ def parse_progress(value):
     if s == "false":
         return 0
     return max(0, min(100, parse_int(s, 0)))
+
+
+def first_int_text(node, path, default=0):
+    child = node.find(path)
+    if child is None or child.text is None:
+        return default
+    return parse_int(child.text, default)
+
+
+def first_text(node, path, default=""):
+    child = node.find(path)
+    if child is None or child.text is None:
+        return default
+    return child.text.strip()
 
 
 def socket_policy_xml(ports="*"):
@@ -442,6 +475,57 @@ def write_cnsl_xml(path, advertise_ip):
     return path
 
 
+def _parse_animation_section(root, section_name):
+    section = root.find(section_name)
+    if section is None:
+        return []
+    out = []
+    for anim in section.findall("anim"):
+        anim_id = first_int_text(anim, "id", -1)
+        if anim_id < 0:
+            continue
+        out.append(CharacterAnimation(id=anim_id, name=first_text(anim, "name", "").upper()))
+    return out
+
+
+def load_character_data(base_dir):
+    global CHARACTER_DATA
+    xml_dir = os.path.join(base_dir, "4_0")
+    data = {}
+    if not os.path.isdir(xml_dir):
+        CHARACTER_DATA = {}
+        return 0
+
+    for entry in os.listdir(xml_dir):
+        if not re.fullmatch(r"\d+\.xml", entry):
+            continue
+        path = os.path.join(xml_dir, entry)
+        try:
+            root = ET.parse(path).getroot()
+        except Exception:
+            continue
+        char_id = parse_int(root.attrib.get("charId"), -1)
+        if char_id < 0:
+            continue
+        special_list = _parse_animation_section(root, "specialAnimations")
+        effect_list = _parse_animation_section(root, "effectAnimations")
+        projectile_list = _parse_animation_section(root, "projectileAnimations")
+        specials = {}
+        for bit, anim in zip(("9", "10", "11", "12"), special_list):
+            specials[bit] = anim
+        data[char_id] = CharacterDefinition(
+            char_id=char_id,
+            name=first_text(root, "name", f"Robot {char_id}"),
+            specials=specials,
+            effect_by_name={anim.name: anim for anim in effect_list if anim.name},
+            projectile_by_name={anim.name: anim for anim in projectile_list if anim.name},
+            effects=effect_list,
+            projectiles=projectile_list,
+        )
+    CHARACTER_DATA = data
+    return len(data)
+
+
 def parse_login(xml_text):
     nick = ""
     zone = "Game"
@@ -484,6 +568,7 @@ def parse_client_xt_frame(frame):
 class FighterState:
     """Per-fighter physics and game state (mirrors player object in cnGame.as)."""
     index: int                    # 0 = P1, 1 = P2  (0-based, matches JS)
+    character_type: int | None = None
     x: float = 600.0
     y: float = float(GROUND_Y)
     vy: float = 0.0
@@ -497,6 +582,8 @@ class FighterState:
     special_until: float = 0.0
     special_move: object = None
     special_hit_done: bool = False
+    last_hit_was_super: bool = False
+    combo_hits: int = 0
     last_key_bits: int = 0
     wins: int = 0
 
@@ -516,6 +603,8 @@ def reset_fighter_for_round(f, x, facing):
     f.special_until = 0.0
     f.special_move = None
     f.special_hit_done = False
+    f.last_hit_was_super = False
+    f.combo_hits = 0
     f.last_key_bits = 0
 
 
@@ -573,9 +662,111 @@ def apply_movement(fighter, opponent, now):
             fighter.anim = BASE_ANIMATIONS["JUMP_UP"]
 
 
+def get_character_definition(character_type):
+    return CHARACTER_DATA.get(parse_int(character_type, -1))
+
+
+def get_character_special_attack(fighter, bits):
+    char_data = get_character_definition(getattr(fighter, "character_type", None))
+    spec_bit = None
+    if has_bit(bits, 10):
+        spec_bit = "10"
+    elif has_bit(bits, 9):
+        spec_bit = "9"
+    elif has_bit(bits, 12):
+        spec_bit = "12"
+    elif has_bit(bits, 11):
+        spec_bit = "11"
+
+    if spec_bit is None or not char_data:
+        return None
+
+    spec = char_data.specials.get(spec_bit)
+    if not spec:
+        return None
+
+    return infer_special_attack_from_name(char_data, spec, fighter.facing, spec_bit in ("10", "12"))
+
+
+def infer_special_attack_from_name(char_data, spec, facing_right, strong):
+    name = (spec.name or "").upper()
+    forward = 1 if facing_right else -1
+    attack = {
+        "anim": spec.id,
+        "damage": 105 if strong else 75,
+        "range": 210 if strong else 175,
+        "lock": 680 if strong else 540,
+        "shake": 9 if strong else 6,
+        "special_name": name,
+    }
+
+    if any(token in name for token in ("FIREBALL", "GRENADE", "SPIT", "DISK", "LASER", "SWORD", "BLASTER", "TIMEBALL", "ELEC", "GUNS", "BUBBY", "FOODTHROW")):
+        attack["range"] = 320 if strong else 260
+        attack["lock"] = 720 if strong else 600
+        attack["shake"] = 10 if strong else 7
+        attack["projectile_id"] = choose_visual_animation_id(char_data.projectile_by_name, char_data.projectiles, name)
+    elif any(token in name for token in ("WHIP", "VINESPIKE", "WAVES", "ROCKS", "CAKE", "DEBRIS", "HANDS", "CLOUD", "SPIKE")):
+        attack["range"] = 250 if strong else 205
+        attack["lock"] = 650 if strong else 540
+        attack["shake"] = 8 if strong else 6
+        attack["effect_id"] = choose_visual_animation_id(char_data.effect_by_name, char_data.effects, name)
+
+    if any(token in name for token in ("DASH", "RUSH", "HEADBUTT", "SLIDE", "PHASE", "TIMEWALK")):
+        attack["dash"] = (24 if strong else 18) * forward
+
+    if any(token in name for token in ("FLIPKICK", "FALLKICK", "STOMP", "SPLASH", "SWINGKICK", "MONKEYSWING", "VERT_KICK", "SPINKICK", "JAKEDROP")):
+        attack["dash"] = (16 if strong else 12) * forward
+        attack["jump"] = -18 if strong else -12
+
+    if "UPPERCUT" in name:
+        attack["damage"] = 115 if strong else 85
+        attack["range"] = 185 if strong else 150
+        attack["jump"] = -14 if strong else -8
+
+    if "GRAB" in name or "THROW" in name:
+        attack["damage"] = 120 if strong else 90
+        attack["range"] = 165 if strong else 145
+        attack["thrown"] = True
+
+    if attack.get("projectile_id") is None and char_data.projectiles:
+        attack["projectile_id"] = choose_visual_animation_id(char_data.projectile_by_name, char_data.projectiles, name)
+    if attack.get("effect_id") is None and char_data.effects:
+        attack["effect_id"] = choose_visual_animation_id(char_data.effect_by_name, char_data.effects, name)
+    return attack
+
+
+def choose_visual_animation_id(by_name, fallback_list, special_name):
+    if not fallback_list:
+        return None
+    upper = (special_name or "").upper()
+    tokens = [token for token in re.split(r"[^A-Z0-9]+", upper) if token]
+    for token in tokens:
+        for anim_name, anim in by_name.items():
+            if token and token in anim_name:
+                return anim.id
+    return fallback_list[0].id
+
+
+def apply_special_movement(match, fighter, opponent, attack, now):
+    extra = []
+    if attack.get("dash") is not None:
+        fighter.x += attack["dash"]
+
+    if not fighter.special_hit_done and abs(fighter.x - opponent.x) <= attack["range"] and abs(fighter.y - opponent.y) <= 140:
+        fighter.special_hit_done = True
+        extra.extend(_apply_attack_hit(match, fighter, opponent, attack, now))
+
+    if fighter.special_until <= now:
+        fighter.special_move = None
+        fighter.special_hit_done = False
+
+    return extra
+
+
 def _apply_attack_hit(match, attacker, defender, attack, now):
     """Apply damage and effects. Returns list of extra broadcast packets."""
     extra = []
+    chained_hit = defender.hit_until > now
     defender.health = max(0, defender.health - attack["damage"])
     defender.hit_until = now + 220.0
     if defender.y < GROUND_Y:
@@ -584,10 +775,21 @@ def _apply_attack_hit(match, attacker, defender, attack, now):
         defender.anim = BASE_ANIMATIONS["HIT"]
 
     attacker.super_meter = min(100, attacker.super_meter + (18 if attack["damage"] >= 90 else 10))
+    attacker.last_hit_was_super = bool(attack.get("super") or attack.get("special_name"))
+    attacker.combo_hits = attacker.combo_hits + 1 if chained_hit else 1
+    defender.combo_hits = 0
+
+    if attacker.combo_hits >= 2:
+        extra.append(xt_server_msg("cmbo", attacker.index, attacker.combo_hits))
 
     if attack.get("thrown"):
         extra.append(xt_server_msg("thrwn", attacker.index + 1))
         defender.anim = BASE_ANIMATIONS["THROWN"]
+
+    if attack.get("effect_id") is not None:
+        extra.append(xt_server_msg("fx", attacker.index, attack["effect_id"], encode_base50(int(defender.x)), encode_base50(int(defender.y))))
+    if attack.get("projectile_id") is not None:
+        extra.append(xt_server_msg("adpj", attacker.index, attack["projectile_id"], encode_base50(int(attacker.x)), encode_base50(int(attacker.y)), attack.get("dash", 0)))
 
     shake = attack.get("shake", 0)
     if shake > 0:
@@ -613,27 +815,20 @@ def maybe_attack(match, fighter, opponent, now):
         attack = {"anim": BASE_ANIMATIONS["STRONG_PUNCH3"], "damage": 180,
                   "range": 180, "lock": STRONG_LOCK_MS, "shake": 10, "super": True}
 
-    # Throw (bit 8, 256)
     elif has_bit(bits, 8):
         attack = {"anim": BASE_ANIMATIONS["THROW"], "damage": 90,
                   "range": 120, "lock": THROW_LOCK_MS, "shake": 8, "thrown": True}
-
-    # Strong kick (bit 7, 128)
-    elif attack is None and has_bit(bits, 7):
+    else:
+        attack = get_character_special_attack(fighter, bits)
+    if attack is None and has_bit(bits, 7):
         a = BASE_ANIMATIONS["JUMP_STRONG_KICK1" if airborne else ("LOW_STRONG_KICK1" if crouching else "STRONG_KICK1")]
         attack = {"anim": a, "damage": 70, "range": 155, "lock": STRONG_LOCK_MS, "shake": 7}
-
-    # Light kick (bit 6, 64)
     elif attack is None and has_bit(bits, 6):
         a = BASE_ANIMATIONS["JUMP_LIGHT_KICK" if airborne else ("LOW_LIGHT_KICK" if crouching else "LIGHT_KICK")]
         attack = {"anim": a, "damage": 40, "range": 135, "lock": ATTACK_LOCK_MS, "shake": 4}
-
-    # Strong punch (bit 5, 32)
     elif attack is None and has_bit(bits, 5):
         a = BASE_ANIMATIONS["JUMP_STRONG_PUNCH1" if airborne else ("LOW_STRONG_PUNCH1" if crouching else "STRONG_PUNCH1")]
         attack = {"anim": a, "damage": 60, "range": 145, "lock": STRONG_LOCK_MS, "shake": 6}
-
-    # Light punch (bit 4, 16)
     elif attack is None and has_bit(bits, 4):
         a = BASE_ANIMATIONS["JUMP_LIGHT_PUNCH" if airborne else ("LOW_LIGHT_PUNCH" if crouching else "LIGHT_PUNCH")]
         attack = {"anim": a, "damage": 35, "range": 125, "lock": ATTACK_LOCK_MS, "shake": 3}
@@ -648,10 +843,16 @@ def maybe_attack(match, fighter, opponent, now):
         fighter.super_meter = 0
         extra.append(xt_server_msg("sups", fighter.index, 600))
 
+    if attack.get("dash") is not None or attack.get("jump") is not None:
+        fighter.special_until = now + attack["lock"]
+        fighter.special_move = attack
+        fighter.special_hit_done = False
+        if attack.get("jump") is not None and fighter.y >= GROUND_Y:
+            fighter.vy = float(attack["jump"])
+
     # Check hit range
-    in_range = (abs(fighter.x - opponent.x) <= attack["range"] and
-                abs(fighter.y - opponent.y) <= 120)
-    if in_range:
+    in_range = (abs(fighter.x - opponent.x) <= attack["range"] and abs(fighter.y - opponent.y) <= 120)
+    if attack.get("dash") is None and in_range:
         extra.extend(_apply_attack_hit(match, fighter, opponent, attack, now))
 
     return extra
@@ -665,7 +866,9 @@ def update_player(match, fighter, opponent, now):
 
     extra = []
 
-    if fighter.hit_until > now:
+    if fighter.special_until > now and fighter.special_move is not None:
+        extra = apply_special_movement(match, fighter, opponent, fighter.special_move, now)
+    elif fighter.hit_until > now:
         fighter.anim = BASE_ANIMATIONS["JUMP_HIT" if fighter.y < GROUND_Y else "HIT"]
     elif fighter.attack_until <= now:
         apply_movement(fighter, opponent, now)
@@ -748,9 +951,11 @@ def _finish_round(match, winner_1based, time_up):
     if winner_1based == 1:
         f1.knocked_out = True
         f1.anim = BASE_ANIMATIONS["DEFEAT"]
+        f0.anim = BASE_ANIMATIONS["VICTORY"]
     elif winner_1based == 2:
         f0.knocked_out = True
         f0.anim = BASE_ANIMATIONS["DEFEAT"]
+        f1.anim = BASE_ANIMATIONS["VICTORY"]
 
 
 def _build_rndo_packets(match):
@@ -770,6 +975,10 @@ def _build_rndo_packets(match):
 
     pkts = []
     match_winner = -1
+    if winner == 1 and f0.last_hit_was_super:
+        pkts.append(xt_server_msg("shk", 14))
+    elif winner == 2 and f1.last_hit_was_super:
+        pkts.append(xt_server_msg("shk", 14))
     if f0.wins >= 2:
         match_winner = 0
     elif f1.wins >= 2:
@@ -1539,6 +1748,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         # ----------------------------------------------------------------- typ
         if cmd == "typ":
             player.character_type = parse_int(value, 0)
+            match.fighters[player.player_index - 1].character_type = player.character_type
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} typ={player.character_type}")
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
                 peer.conn.send_tcp(game_cmd_opp(player.character_type))
@@ -1722,6 +1932,31 @@ class BlueBoxHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(txt)
 
     def do_GET(self):
+        if self.path == "/status.json":
+            with STATE_LOCK:
+                active_matches = [
+                    {
+                        "matchId": match.match_id,
+                        "players": [p.nick for p in match.players.values()],
+                        "round": match.round_number,
+                        "started": match.round_started,
+                    }
+                    for match in MATCHES.values()
+                ]
+                waiting = WAITING_MATCH_ID
+                payload = json.dumps(
+                    {
+                        "onlinePlayers": current_logged_in_count(),
+                        "activeMatches": active_matches,
+                        "waitingMatchId": waiting,
+                    },
+                    separators=(",", ":"),
+                )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
         if self.path == "/BlueBox/HttpBox.do":
             self.send_error(405, "BlueBox endpoint expects POST")
             return
@@ -1892,6 +2127,8 @@ def main():
     HTTP_SEND_ALL_QUEUED = bool(args.send_all_http)
 
     advertise_ip = args.advertise_ip or auto_detect_advertise_ip()
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    loaded_chars = load_character_data(base_dir)
 
     cnsl_target = args.write_cnsl
     if cnsl_target is None and args.static_dir:
@@ -1908,6 +2145,7 @@ def main():
     debug_print("TCP (SmartFox) port:", args.tcp_port)
     debug_print("HTTP (BlueBox) port:", args.http_port)
     debug_print("Policy port:", args.policy_port)
+    debug_print("Character XML loaded:", loaded_chars)
     debug_print(f"su ticker: {SU_TICK_HZ} fps")
     debug_print(f'Use this cnsl.xml entry: <server name="local">{advertise_ip}</server>')
 
