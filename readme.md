@@ -14,9 +14,9 @@ The project now restores the full connection flow and a playable multiplayer mat
 
 ## Live Server
 
-**The public server is currently down, but will be hosted at [`tko.hoody.cx`](http://tko.hoody.cx/GameContainer.swf).**
+**The public server is currently live at [`tko.hoody.cx`](http://tko.hoody.cx/GameContainer.swf).**
 
-If you want the easiest way to launch the game, use **Adobe Flash / Ruffle Desktop** from the official downloads page:
+If you want the easiest way to launch the game, use **Ruffle Desktop** from the official downloads page:
 
 - [Flash Desktop](https://archive.org/details/flashplayer_32_sa)
 
@@ -44,6 +44,7 @@ The project is no longer in the “basic connectivity only” stage. The current
 - timer, camera, movement, attacks, throws, health, meter, and rematch logic are server-driven
 - character special buttons are mapped by grouped move families from the original XML, so buttons land on entry-point animations instead of hold/drop/miss frames
 - in-match XT packets now include the SmartFox room-id slot so result, rematch, and visual-effect packets parse correctly on the client
+- projectile specials now spawn from the server with per-move projectile ids and travel velocity instead of incorrectly waiting for hit-confirm
 - BlueBox fallback works
 - the same HTTP server now serves both the Flash assets and the BlueBox endpoint
 
@@ -159,6 +160,7 @@ Recent findings:
 - forcing the load handshake too early can trigger round announcer audio before the actual stage round begins
 - the original `specialAnimations` lists contain both button-entry animations and follow-up phase animations (`START` / `FLY` / `HIT` / `MISS` / `SUPER`), so button mapping needs to target entry-point move families rather than blindly consuming hold/drop/miss frames
 - several server-authored in-match packets must include the SmartFox room-id field on the wire, or the client misreads `rndo`, `win`, `rmch`, and synthesized effect packets
+- projectile and effect ids cannot be assigned by a blind "first asset in the list" fallback, or melee specials inherit the wrong visuals and real ranged moves never spawn correctly
 
 ## Disclaimer
 

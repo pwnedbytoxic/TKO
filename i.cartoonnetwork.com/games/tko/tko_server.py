@@ -501,6 +501,13 @@ SPECIAL_SUFFIX_TOKENS = {
     "STRONG1", "STRONG2", "STRONG3",
 }
 
+VISUAL_KEYWORDS = (
+    "BEAM", "BALL", "CLOUD", "SPIKE", "WAVE", "WAVES", "MISSILE", "GRENADE",
+    "DISK", "LASER", "SWORD", "GUNS", "HANDS", "ROCKS", "WHIP", "DEBRIS",
+    "CAKE", "ELEC", "SPIT", "FIRE", "FREEZE", "ICE", "FOODTHROW", "BUBBY",
+    "BLASTER", "VINE", "VINES", "KIMCHI", "MISSILES",
+)
+
 
 def common_prefix_tokens(names):
     token_lists = [[tok for tok in name.split("_") if tok] for name in names if name]
@@ -553,6 +560,21 @@ def find_phase_animation(group, *tokens):
         if all(tok in name for tok in required):
             return anim
     return None
+
+
+def split_visual_tokens(value):
+    tokens = []
+    for token in re.split(r"[^A-Z0-9]+", (value or "").upper()):
+        if not token:
+            continue
+        if token not in tokens:
+            tokens.append(token)
+        for keyword in VISUAL_KEYWORDS:
+            if keyword == token:
+                continue
+            if keyword in token and keyword not in tokens:
+                tokens.append(keyword)
+    return tokens
 
 
 def build_special_input_map(special_list):
@@ -846,12 +868,28 @@ def infer_special_attack_from_name(char_data, spec, group, facing_right, strong)
         attack["range"] = 320 if strong else 260
         attack["lock"] = 720 if strong else 600
         attack["shake"] = 10 if strong else 7
-        attack["projectile_id"] = choose_visual_animation_id(char_data.projectile_by_name, char_data.projectiles, name)
+        attack["projectile_id"] = choose_visual_animation_id(
+            char_data.projectile_by_name,
+            char_data.projectiles,
+            name,
+            allow_single_fallback=True,
+        )
+        base_speed = 32 if strong else 26
+        if any(token in name for token in ("LASER", "BEAM", "ELEC", "TIMEBALL")):
+            base_speed += 8
+        elif any(token in name for token in ("GRENADE", "CAKE", "BUBBY", "FOODTHROW")):
+            base_speed -= 4
+        attack["projectile_velocity"] = base_speed * forward
     elif any(token in name for token in ("WHIP", "VINESPIKE", "WAVES", "ROCKS", "CAKE", "DEBRIS", "HANDS", "CLOUD", "SPIKE")):
         attack["range"] = 250 if strong else 205
         attack["lock"] = 650 if strong else 540
         attack["shake"] = 8 if strong else 6
-        attack["effect_id"] = choose_visual_animation_id(char_data.effect_by_name, char_data.effects, name)
+        attack["effect_id"] = choose_visual_animation_id(
+            char_data.effect_by_name,
+            char_data.effects,
+            name,
+            allow_single_fallback=True,
+        )
 
     if any(token in name for token in ("DASH", "RUSH", "HEADBUTT", "SLIDE", "PHASE", "TIMEWALK")):
         attack["dash"] = (24 if strong else 18) * forward
@@ -870,23 +908,69 @@ def infer_special_attack_from_name(char_data, spec, group, facing_right, strong)
         attack["range"] = 165 if strong else 145
         attack["thrown"] = True
 
-    if attack.get("projectile_id") is None and char_data.projectiles:
-        attack["projectile_id"] = choose_visual_animation_id(char_data.projectile_by_name, char_data.projectiles, name)
-    if attack.get("effect_id") is None and char_data.effects:
-        attack["effect_id"] = choose_visual_animation_id(char_data.effect_by_name, char_data.effects, name)
+    if "SUPER" in name or "BEAM" in name:
+        if attack.get("projectile_id") is None and char_data.projectiles:
+            attack["projectile_id"] = choose_visual_animation_id(
+                char_data.projectile_by_name,
+                char_data.projectiles,
+                name,
+                allow_single_fallback=len(char_data.projectiles) == 1,
+            )
+            if attack.get("projectile_id") is not None and attack.get("projectile_velocity") is None:
+                attack["projectile_velocity"] = (36 if strong else 30) * forward
+        if attack.get("effect_id") is None and char_data.effects:
+            attack["effect_id"] = choose_visual_animation_id(
+                char_data.effect_by_name,
+                char_data.effects,
+                name,
+                allow_single_fallback=len(char_data.effects) == 1,
+            )
     return attack
 
 
-def choose_visual_animation_id(by_name, fallback_list, special_name):
+def choose_visual_animation_id(by_name, fallback_list, special_name, allow_single_fallback=False):
     if not fallback_list:
         return None
-    upper = (special_name or "").upper()
-    tokens = [token for token in re.split(r"[^A-Z0-9]+", upper) if token]
-    for token in tokens:
-        for anim_name, anim in by_name.items():
-            if token and token in anim_name:
-                return anim.id
-    return fallback_list[0].id
+    special_tokens = split_visual_tokens(special_name)
+    best_anim = None
+    best_score = 0
+    for anim in fallback_list:
+        anim_tokens = split_visual_tokens(anim.name)
+        score = 0
+        for special_token in special_tokens:
+            for anim_token in anim_tokens:
+                if special_token == anim_token:
+                    score = max(score, 100 + len(special_token))
+                elif len(special_token) >= 4 and special_token in anim_token:
+                    score = max(score, 60 + len(special_token))
+                elif len(anim_token) >= 4 and anim_token in special_token:
+                    score = max(score, 50 + len(anim_token))
+        if score > best_score:
+            best_score = score
+            best_anim = anim
+    if best_anim is not None:
+        return best_anim.id
+    if allow_single_fallback and len(fallback_list) == 1:
+        return fallback_list[0].id
+    return None
+
+
+def build_projectile_packet(match, fighter, attack):
+    projectile_id = attack.get("projectile_id")
+    if projectile_id is None:
+        return None
+    velocity = int(attack.get("projectile_velocity", 0))
+    if velocity == 0:
+        velocity = 28 if fighter.facing else -28
+    return xt_room_msg(
+        match.match_id,
+        "adpj",
+        fighter.index,
+        projectile_id,
+        encode_base50(int(fighter.x)),
+        encode_base50(int(fighter.y)),
+        velocity,
+    )
 
 
 def apply_special_movement(match, fighter, opponent, attack, now):
@@ -950,19 +1034,6 @@ def _apply_attack_hit(match, attacker, defender, attack, now):
                 encode_base50(int(defender.y)),
             )
         )
-    if attack.get("projectile_id") is not None:
-        extra.append(
-            xt_room_msg(
-                match.match_id,
-                "adpj",
-                attacker.index,
-                attack["projectile_id"],
-                encode_base50(int(attacker.x)),
-                encode_base50(int(attacker.y)),
-                attack.get("dash", 0),
-            )
-        )
-
     shake = attack.get("shake", 0)
     if shake > 0:
         extra.append(xt_room_msg(match.match_id, "shk", shake))
@@ -1012,6 +1083,10 @@ def maybe_attack(match, fighter, opponent, now):
 
     fighter.anim = attack["anim"]
     fighter.attack_until = now + attack["lock"]
+
+    projectile_pkt = build_projectile_packet(match, fighter, attack)
+    if projectile_pkt is not None:
+        extra.append(projectile_pkt)
 
     if attack.get("super"):
         fighter.super_meter = 0
