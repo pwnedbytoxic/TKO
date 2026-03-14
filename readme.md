@@ -14,11 +14,15 @@ The project now restores the full connection flow and a playable multiplayer mat
 
 ## Live Server
 
-**The public server is currently live at [`tko.hoody.cx`](http://tko.hoody.cx/GameContainer.swf).**
+**The public server is currently down, but will be hosted at [`tko.hoody.cx`](http://tko.hoody.cx/GameContainer.swf).**
 
-If you want the easiest way to launch the game, use **Ruffle Desktop** from the official downloads page:
+If you want the easiest way to launch the game, use **Adobe Flash / Ruffle Desktop** from the official downloads page:
+
+- [Flash Desktop](https://archive.org/details/flashplayer_32_sa)
 
 - [Ruffle Desktop](https://ruffle.rs/downloads)
+
+*NOTE - Ruffle Browser Extension is currently not functional*
 
 Then open this URL inside Ruffle Desktop:
 
@@ -38,6 +42,8 @@ The project is no longer in the “basic connectivity only” stage. The current
 - both players enter the match
 - rounds start and progress without the old immediate-DRAW bug
 - timer, camera, movement, attacks, throws, health, meter, and rematch logic are server-driven
+- character special buttons are mapped by grouped move families from the original XML, so buttons land on entry-point animations instead of hold/drop/miss frames
+- in-match XT packets now include the SmartFox room-id slot so result, rematch, and visual-effect packets parse correctly on the client
 - BlueBox fallback works
 - the same HTTP server now serves both the Flash assets and the BlueBox endpoint
 
@@ -46,6 +52,7 @@ The project is no longer in the “basic connectivity only” stage. The current
 The remaining work is mostly polish and fidelity against the original game footage:
 
 - tighten special-effect packet behavior for every character
+- continue validating round-start announcer timing and round-transition audio against recorded gameplay
 - improve projectile/effect lifecycle fidelity
 - continue refining “super KO” presentation and per-character attack visuals
 - keep matching camera, hit reactions, and round flow as closely as possible to the original game
@@ -146,6 +153,12 @@ This emulator has been reconstructed using:
 - comparison against surviving gameplay footage
 
 The current focus is fidelity, not just connectivity.
+
+Recent findings:
+
+- forcing the load handshake too early can trigger round announcer audio before the actual stage round begins
+- the original `specialAnimations` lists contain both button-entry animations and follow-up phase animations (`START` / `FLY` / `HIT` / `MISS` / `SUPER`), so button mapping needs to target entry-point move families rather than blindly consuming hold/drop/miss frames
+- several server-authored in-match packets must include the SmartFox room-id field on the wire, or the client misreads `rndo`, `win`, `rmch`, and synthesized effect packets
 
 ## Disclaimer
 

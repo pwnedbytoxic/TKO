@@ -144,7 +144,9 @@ class CharacterAnimation:
 class CharacterDefinition:
     char_id: int
     name: str
-    specials: dict = field(default_factory=dict)
+    special_inputs: dict = field(default_factory=dict)
+    special_groups: dict = field(default_factory=dict)
+    super_group_key: str | None = None
     effect_by_name: dict = field(default_factory=dict)
     projectile_by_name: dict = field(default_factory=dict)
     effects: list = field(default_factory=list)
@@ -338,6 +340,11 @@ def xt_server_msg(cmd, *params):
     return "%" + "%".join(parts) + "%"
 
 
+def xt_room_msg(room_id, cmd, *params):
+    """Extension/server packet with the SmartFox room-id slot populated."""
+    return xt_server_msg(cmd, room_id, *params)
+
+
 def xt_cngame_msg(room_id, cmd, *params):
     """Full cnGame extension envelope for raw peer-relay traffic.
     %xt%cnGame%<cmd>%<room_id>%<params...>%
@@ -367,37 +374,37 @@ def xt_wrapper_opponent_lost():
     return xt_server_msg("_ol")
 
 
-def game_cmd_dl(opponent_ping):
-    return xt_server_msg("dl", 0, opponent_ping)
+def game_cmd_dl(room_id, opponent_ping):
+    return xt_room_msg(room_id, "dl", opponent_ping)
 
 
-def game_cmd_echo():
-    return xt_server_msg("echo")
+def game_cmd_echo(room_id):
+    return xt_room_msg(room_id, "echo")
 
 
-def game_cmd_opp(opponent_character_type):
-    return xt_server_msg("opp", 0, opponent_character_type)
+def game_cmd_opp(room_id, opponent_character_type):
+    return xt_room_msg(room_id, "opp", opponent_character_type)
 
 
-def game_cmd_rdy(map_id=0):
+def game_cmd_rdy(room_id, map_id=0):
     """Send rdy with mapId to opponent (from cnGame.as rdy handler)."""
-    return xt_server_msg("rdy", map_id)
+    return xt_room_msg(room_id, "rdy", map_id)
 
 
-def game_cmd_fr(progress):
-    return xt_server_msg("fr", 0, progress)
+def game_cmd_fr(room_id, progress):
+    return xt_room_msg(room_id, "fr", progress)
 
 
-def game_cmd_lded():
-    return xt_server_msg("lded")
+def game_cmd_lded(room_id):
+    return xt_room_msg(room_id, "lded")
 
 
-def game_cmd_rnds(round_no):
-    return xt_server_msg("rnds", 0, round_no)
+def game_cmd_rnds(room_id, round_no):
+    return xt_room_msg(room_id, "rnds", round_no)
 
 
-def game_cmd_rmch():
-    return xt_server_msg("rmch", 1)
+def game_cmd_rmch(room_id):
+    return xt_room_msg(room_id, "rmch", 1)
 
 
 # ---------------------------------------------------------------------------
@@ -439,8 +446,8 @@ def game_cmd_su_snapshot(match_id, su_id, round_timer, f0, f1):
     if cam + SCREEN_WIDTH < max_x:
         cam = int(max_x - SCREEN_WIDTH)
     cam = max(0, min(LEVEL_WIDTH - SCREEN_WIDTH, cam))
-    return xt_server_msg(
-        "su", match_id,
+    return xt_room_msg(
+        match_id, "su",
         su_id, round_timer,
         encode_base50(cam), 0,
         encode_base50(int(f0.x)), encode_base50(int(f0.y)),
@@ -453,14 +460,14 @@ def game_cmd_su_snapshot(match_id, su_id, round_timer, f0, f1):
     )
 
 
-def game_cmd_rndo(p1_wins=0, p2_wins=0, time_up=0, winner=0, perfect="false", comeback="false"):
+def game_cmd_rndo(room_id, p1_wins=0, p2_wins=0, time_up=0, winner=0, perfect="false", comeback="false"):
     """Round-over packet from cnGame.as resolveRoundEnd.
     winner: 1=P1, 2=P2, 0=draw.  time_up: 1 if timer expired."""
-    return xt_server_msg("rndo", p1_wins, p2_wins, time_up, winner, perfect, comeback)
+    return xt_room_msg(room_id, "rndo", p1_wins, p2_wins, time_up, winner, perfect, comeback)
 
 
-def game_cmd_win(winner_zero_based):
-    return xt_server_msg("win", winner_zero_based)
+def game_cmd_win(room_id, winner_zero_based):
+    return xt_room_msg(room_id, "win", winner_zero_based)
 
 
 def write_cnsl_xml(path, advertise_ip):
@@ -488,6 +495,119 @@ def _parse_animation_section(root, section_name):
     return out
 
 
+SPECIAL_SUFFIX_TOKENS = {
+    "LIGHT", "STRONG", "START", "FLY", "END", "HIT", "MISS", "HOLD", "DROP",
+    "ATTACK", "REACH", "SWING", "RECOVER", "THROW", "LIGHT1", "LIGHT2", "LIGHT3",
+    "STRONG1", "STRONG2", "STRONG3",
+}
+
+
+def common_prefix_tokens(names):
+    token_lists = [[tok for tok in name.split("_") if tok] for name in names if name]
+    if not token_lists:
+        return []
+    prefix = token_lists[0][:]
+    for tokens in token_lists[1:]:
+        i = 0
+        while i < min(len(prefix), len(tokens)) and prefix[i] == tokens[i]:
+            i += 1
+        prefix = prefix[:i]
+        if not prefix:
+            break
+    if prefix and prefix[0] == "ANIM":
+        prefix = prefix[1:]
+    return prefix
+
+
+def normalize_special_group_name(name, prefix_tokens):
+    tokens = [tok for tok in (name or "").upper().split("_") if tok]
+    if prefix_tokens and tokens[:len(prefix_tokens)] == prefix_tokens:
+        tokens = tokens[len(prefix_tokens):]
+    if not tokens:
+        return name.upper()
+    while len(tokens) > 1 and tokens[-1] in SPECIAL_SUFFIX_TOKENS:
+        tokens.pop()
+    return "_".join(tokens)
+
+
+def choose_group_entry(group, strong=False):
+    names = [(anim.name or "").upper() for anim in group]
+    if strong:
+        for anim, name in zip(group, names):
+            if "STRONG" in name:
+                return anim
+    else:
+        for anim, name in zip(group, names):
+            if "LIGHT" in name:
+                return anim
+    for anim, name in zip(group, names):
+        if "START" in name or "REACH" in name:
+            return anim
+    return group[0] if group else None
+
+
+def find_phase_animation(group, *tokens):
+    required = tuple(tok.upper() for tok in tokens if tok)
+    for anim in group:
+        name = (anim.name or "").upper()
+        if all(tok in name for tok in required):
+            return anim
+    return None
+
+
+def build_special_input_map(special_list):
+    if not special_list:
+        return {}, {}, None
+    prefix_tokens = common_prefix_tokens([anim.name for anim in special_list])
+    groups = []
+    current_key = None
+    current_group = []
+    for anim in special_list:
+        key = normalize_special_group_name(anim.name, prefix_tokens)
+        if key != current_key:
+            if current_group:
+                groups.append((current_key, current_group))
+            current_key = key
+            current_group = [anim]
+        else:
+            current_group.append(anim)
+    if current_group:
+        groups.append((current_key, current_group))
+
+    grouped = {key: group for key, group in groups}
+    input_map = {}
+    super_group_key = None
+    non_super_groups = []
+    for key, group in groups:
+        if "SUPER" in key:
+            super_group_key = key
+        else:
+            non_super_groups.append((key, group))
+
+    primary_group_keys = []
+    if non_super_groups:
+        group_key, group = non_super_groups[0]
+        input_map["9"] = {"group_key": group_key, "anim": choose_group_entry(group, strong=False)}
+        input_map["10"] = {"group_key": group_key, "anim": choose_group_entry(group, strong=True) or input_map["9"]["anim"]}
+        primary_group_keys.append(group_key)
+    if len(non_super_groups) >= 2:
+        group_key, group = non_super_groups[1]
+        input_map["11"] = {"group_key": group_key, "anim": choose_group_entry(group, strong=False)}
+        input_map["12"] = {"group_key": group_key, "anim": choose_group_entry(group, strong=True) or input_map["11"]["anim"]}
+        primary_group_keys.append(group_key)
+    elif non_super_groups:
+        group_key, group = non_super_groups[0]
+        input_map["11"] = {"group_key": group_key, "anim": choose_group_entry(group, strong=False)}
+        input_map["12"] = {"group_key": group_key, "anim": choose_group_entry(group, strong=True) or input_map["11"]["anim"]}
+
+    if super_group_key is None:
+        leftover_keys = [key for key, _group in groups if key not in primary_group_keys]
+        if leftover_keys:
+            super_group_key = leftover_keys[-1]
+
+    return input_map, grouped, super_group_key
+
+
 def load_character_data(base_dir):
     global CHARACTER_DATA
     xml_dir = os.path.join(base_dir, "4_0")
@@ -510,13 +630,13 @@ def load_character_data(base_dir):
         special_list = _parse_animation_section(root, "specialAnimations")
         effect_list = _parse_animation_section(root, "effectAnimations")
         projectile_list = _parse_animation_section(root, "projectileAnimations")
-        specials = {}
-        for bit, anim in zip(("9", "10", "11", "12"), special_list):
-            specials[bit] = anim
+        input_map, grouped_specials, super_group_key = build_special_input_map(special_list)
         data[char_id] = CharacterDefinition(
             char_id=char_id,
             name=first_text(root, "name", f"Robot {char_id}"),
-            specials=specials,
+            special_inputs=input_map,
+            special_groups=grouped_specials,
+            super_group_key=super_group_key,
             effect_by_name={anim.name: anim for anim in effect_list if anim.name},
             projectile_by_name={anim.name: anim for anim in projectile_list if anim.name},
             effects=effect_list,
@@ -681,14 +801,30 @@ def get_character_special_attack(fighter, bits):
     if spec_bit is None or not char_data:
         return None
 
-    spec = char_data.specials.get(spec_bit)
-    if not spec:
+    spec_info = char_data.special_inputs.get(spec_bit)
+    if not spec_info:
         return None
+    spec = spec_info["anim"]
+    group = char_data.special_groups.get(spec_info["group_key"], [spec])
+    return infer_special_attack_from_name(char_data, spec, group, fighter.facing, spec_bit in ("10", "12"))
 
-    return infer_special_attack_from_name(char_data, spec, fighter.facing, spec_bit in ("10", "12"))
+
+def get_character_super_attack(fighter):
+    char_data = get_character_definition(getattr(fighter, "character_type", None))
+    if not char_data or not char_data.super_group_key:
+        return None
+    group = char_data.special_groups.get(char_data.super_group_key, [])
+    anim = choose_group_entry(group, strong=True)
+    if not anim:
+        return None
+    attack = infer_special_attack_from_name(char_data, anim, group, fighter.facing, True)
+    attack["super"] = True
+    attack["damage"] = max(attack.get("damage", 0), 180)
+    attack["shake"] = max(attack.get("shake", 0), 10)
+    return attack
 
 
-def infer_special_attack_from_name(char_data, spec, facing_right, strong):
+def infer_special_attack_from_name(char_data, spec, group, facing_right, strong):
     name = (spec.name or "").upper()
     forward = 1 if facing_right else -1
     attack = {
@@ -699,6 +835,12 @@ def infer_special_attack_from_name(char_data, spec, facing_right, strong):
         "shake": 9 if strong else 6,
         "special_name": name,
     }
+    attack["fly_anim"] = getattr(find_phase_animation(group, "FLY"), "id", None)
+    attack["hit_anim"] = getattr(find_phase_animation(group, "HIT"), "id", None)
+    attack["miss_anim"] = getattr(find_phase_animation(group, "MISS"), "id", None)
+    attack["end_anim"] = getattr(find_phase_animation(group, "END"), "id", None)
+    attack["hold_anim"] = getattr(find_phase_animation(group, "HOLD"), "id", None)
+    attack["attack_anim"] = getattr(find_phase_animation(group, "ATTACK"), "id", None)
 
     if any(token in name for token in ("FIREBALL", "GRENADE", "SPIT", "DISK", "LASER", "SWORD", "BLASTER", "TIMEBALL", "ELEC", "GUNS", "BUBBY", "FOODTHROW")):
         attack["range"] = 320 if strong else 260
@@ -749,14 +891,25 @@ def choose_visual_animation_id(by_name, fallback_list, special_name):
 
 def apply_special_movement(match, fighter, opponent, attack, now):
     extra = []
+    remaining = max(0.0, fighter.special_until - now)
+    elapsed = max(0.0, attack["lock"] - remaining)
+
+    fighter.anim = attack["anim"]
+    if fighter.special_hit_done:
+        fighter.anim = attack.get("hit_anim") or attack.get("attack_anim") or attack["anim"]
+    elif attack.get("attack_anim") is not None and elapsed >= max(120.0, attack["lock"] * 0.45):
+        fighter.anim = attack["attack_anim"]
+
     if attack.get("dash") is not None:
         fighter.x += attack["dash"]
 
     if not fighter.special_hit_done and abs(fighter.x - opponent.x) <= attack["range"] and abs(fighter.y - opponent.y) <= 140:
         fighter.special_hit_done = True
         extra.extend(_apply_attack_hit(match, fighter, opponent, attack, now))
+        fighter.anim = attack.get("hit_anim") or attack.get("attack_anim") or fighter.anim
 
     if fighter.special_until <= now:
+        fighter.anim = attack.get("miss_anim") or attack.get("end_anim") or BASE_ANIMATIONS["IDLE"]
         fighter.special_move = None
         fighter.special_hit_done = False
 
@@ -780,20 +933,39 @@ def _apply_attack_hit(match, attacker, defender, attack, now):
     defender.combo_hits = 0
 
     if attacker.combo_hits >= 2:
-        extra.append(xt_server_msg("cmbo", attacker.index, attacker.combo_hits))
+        extra.append(xt_room_msg(match.match_id, "cmbo", attacker.index, attacker.combo_hits))
 
     if attack.get("thrown"):
-        extra.append(xt_server_msg("thrwn", attacker.index + 1))
+        extra.append(xt_room_msg(match.match_id, "thrwn", attacker.index + 1))
         defender.anim = BASE_ANIMATIONS["THROWN"]
 
     if attack.get("effect_id") is not None:
-        extra.append(xt_server_msg("fx", attacker.index, attack["effect_id"], encode_base50(int(defender.x)), encode_base50(int(defender.y))))
+        extra.append(
+            xt_room_msg(
+                match.match_id,
+                "fx",
+                attacker.index,
+                attack["effect_id"],
+                encode_base50(int(defender.x)),
+                encode_base50(int(defender.y)),
+            )
+        )
     if attack.get("projectile_id") is not None:
-        extra.append(xt_server_msg("adpj", attacker.index, attack["projectile_id"], encode_base50(int(attacker.x)), encode_base50(int(attacker.y)), attack.get("dash", 0)))
+        extra.append(
+            xt_room_msg(
+                match.match_id,
+                "adpj",
+                attacker.index,
+                attack["projectile_id"],
+                encode_base50(int(attacker.x)),
+                encode_base50(int(attacker.y)),
+                attack.get("dash", 0),
+            )
+        )
 
     shake = attack.get("shake", 0)
     if shake > 0:
-        extra.append(xt_server_msg("shk", shake))
+        extra.append(xt_room_msg(match.match_id, "shk", shake))
 
     return extra
 
@@ -812,8 +984,10 @@ def maybe_attack(match, fighter, opponent, now):
 
     # Super (bit 13, 8192) — costs 100 super meter
     if has_bit(bits, 13) and fighter.super_meter >= 100:
-        attack = {"anim": BASE_ANIMATIONS["STRONG_PUNCH3"], "damage": 180,
-                  "range": 180, "lock": STRONG_LOCK_MS, "shake": 10, "super": True}
+        attack = get_character_super_attack(fighter)
+        if attack is None:
+            attack = {"anim": BASE_ANIMATIONS["STRONG_PUNCH3"], "damage": 180,
+                      "range": 180, "lock": STRONG_LOCK_MS, "shake": 10, "super": True}
 
     elif has_bit(bits, 8):
         attack = {"anim": BASE_ANIMATIONS["THROW"], "damage": 90,
@@ -841,7 +1015,7 @@ def maybe_attack(match, fighter, opponent, now):
 
     if attack.get("super"):
         fighter.super_meter = 0
-        extra.append(xt_server_msg("sups", fighter.index, 600))
+        extra.append(xt_room_msg(match.match_id, "sups", fighter.index, 600))
 
     if attack.get("dash") is not None or attack.get("jump") is not None:
         fighter.special_until = now + attack["lock"]
@@ -951,11 +1125,9 @@ def _finish_round(match, winner_1based, time_up):
     if winner_1based == 1:
         f1.knocked_out = True
         f1.anim = BASE_ANIMATIONS["DEFEAT"]
-        f0.anim = BASE_ANIMATIONS["VICTORY"]
     elif winner_1based == 2:
         f0.knocked_out = True
         f0.anim = BASE_ANIMATIONS["DEFEAT"]
-        f1.anim = BASE_ANIMATIONS["VICTORY"]
 
 
 def _build_rndo_packets(match):
@@ -975,19 +1147,16 @@ def _build_rndo_packets(match):
 
     pkts = []
     match_winner = -1
-    if winner == 1 and f0.last_hit_was_super:
-        pkts.append(xt_server_msg("shk", 14))
-    elif winner == 2 and f1.last_hit_was_super:
-        pkts.append(xt_server_msg("shk", 14))
     if f0.wins >= 2:
         match_winner = 0
     elif f1.wins >= 2:
         match_winner = 1
 
     if match_winner != -1:
-        pkts.append(game_cmd_win(match_winner))
+        pkts.append(game_cmd_win(match.match_id, match_winner))
 
     pkts.append(game_cmd_rndo(
+        match.match_id,
         p1_wins=f0.wins, p2_wins=f1.wins,
         time_up=1 if time_up else 0,
         winner=winner,
@@ -1025,7 +1194,7 @@ def game_start_round(match):
     reset_fighter_for_round(f0, START_X_1, facing=True)
     reset_fighter_for_round(f1, START_X_2, facing=False)
 
-    rnds_pkt = game_cmd_rnds(match.round_number)
+    rnds_pkt = game_cmd_rnds(match.match_id, match.round_number)
     su_pkt   = _build_su_packet(match)
     match.next_su_id += 1
     return rnds_pkt, su_pkt
@@ -1182,20 +1351,20 @@ def flush_peer_state_to_player(match, player_index):
     if getattr(me.conn, "closed", False):
         return
     if peer.ping is not None:
-        me.conn.send_tcp(game_cmd_dl(peer.ping))
+        me.conn.send_tcp(game_cmd_dl(match.match_id, peer.ping))
     if peer.character_type is not None:
-        me.conn.send_tcp(game_cmd_opp(peer.character_type))
+        me.conn.send_tcp(game_cmd_opp(match.match_id, peer.character_type))
     if peer.ready:
         map_id = match.map_id if match.map_id is not None else (match.match_id % 5)
-        me.conn.send_tcp(game_cmd_rdy(map_id))
+        me.conn.send_tcp(game_cmd_rdy(match.match_id, map_id))
     if peer.fr_progress >= 0:
-        me.conn.send_tcp(game_cmd_fr(peer.fr_progress))
+        me.conn.send_tcp(game_cmd_fr(match.match_id, peer.fr_progress))
     if match.lded_sent:
-        me.conn.send_tcp(game_cmd_lded())
+        me.conn.send_tcp(game_cmd_lded(match.match_id))
     if peer.rematch:
-        me.conn.send_tcp(game_cmd_rmch())
+        me.conn.send_tcp(game_cmd_rmch(match.match_id))
     if match.rnds_sent and match.round_started:
-        me.conn.send_tcp(game_cmd_rnds(match.round_number))
+        me.conn.send_tcp(game_cmd_rnds(match.match_id, match.round_number))
         # Send a fresh su snapshot so the late-arriving client sees current state
         su_pkt = _build_su_packet(match)
         me.conn.send_tcp(su_pkt, quiet=True)
@@ -1207,30 +1376,30 @@ def sync_opponent_state_to_player(match, player, opponent):
 
     opponent_ping = opponent.ping if opponent.ping is not None else 0
     if player.sent_opponent_ping != opponent_ping:
-        player.conn.send_tcp(game_cmd_dl(opponent_ping))
+        player.conn.send_tcp(game_cmd_dl(match.match_id, opponent_ping))
         player.sent_opponent_ping = opponent_ping
 
     if opponent.character_type is not None and player.sent_opp_character_type != opponent.character_type:
-        player.conn.send_tcp(game_cmd_opp(opponent.character_type))
+        player.conn.send_tcp(game_cmd_opp(match.match_id, opponent.character_type))
         player.sent_opp_character_type = opponent.character_type
 
     if opponent.ready:
         if match.map_id is None:
             match.map_id = match.match_id % 5
         if player.sent_ready_map_id != match.map_id:
-            player.conn.send_tcp(game_cmd_rdy(match.map_id))
+            player.conn.send_tcp(game_cmd_rdy(match.match_id, match.map_id))
             player.sent_ready_map_id = match.map_id
 
     if player.sent_load_frame != opponent.fr_progress:
-        player.conn.send_tcp(game_cmd_fr(opponent.fr_progress))
+        player.conn.send_tcp(game_cmd_fr(match.match_id, opponent.fr_progress))
         player.sent_load_frame = opponent.fr_progress
 
     if opponent.loaded and not player.sent_loaded:
-        player.conn.send_tcp(game_cmd_lded())
+        player.conn.send_tcp(game_cmd_lded(match.match_id))
         player.sent_loaded = True
 
     if opponent.rematch and not player.sent_rematch:
-        player.conn.send_tcp(game_cmd_rmch())
+        player.conn.send_tcp(game_cmd_rmch(match.match_id))
         player.sent_rematch = True
 
 
@@ -1285,20 +1454,22 @@ def try_force_load_handshake(match):
         return
     if p1.character_type is None or p2.character_type is None:
         return
+    if max(p1.fr_progress, p2.fr_progress) <= 0 and not p1.loaded and not p2.loaded:
+        return
 
     if not p1.loaded:
         p1.fr_progress = 100
         p1.loaded = True
         p2.sent_load_frame = 100
         if p2.cn_seen and not getattr(p2.conn, "closed", False):
-            p2.conn.send_tcp(game_cmd_fr(100))
+            p2.conn.send_tcp(game_cmd_fr(match.match_id, 100))
 
     if not p2.loaded:
         p2.fr_progress = 100
         p2.loaded = True
         p1.sent_load_frame = 100
         if p1.cn_seen and not getattr(p1.conn, "closed", False):
-            p1.conn.send_tcp(game_cmd_fr(100))
+            p1.conn.send_tcp(game_cmd_fr(match.match_id, 100))
 
 
 def maybe_schedule_round_start(match, reason=""):
@@ -1307,7 +1478,6 @@ def maybe_schedule_round_start(match, reason=""):
             return
         if match.round_sequence_started or match.round_live or match.round_started:
             return
-        try_force_load_handshake(match)
         if not match_prefight_ready(match):
             return
         if not match_load_ready(match):
@@ -1327,7 +1497,7 @@ def _do_round_start_sequence(mid):
         if not match:
             return
         match.lded_sent = True
-        _broadcast(match, game_cmd_lded())
+        _broadcast(match, game_cmd_lded(match.match_id))
         for mp in match.players.values():
             reset_player_sync_state(mp)
             mp.sent_loaded = True
@@ -1716,7 +1886,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         if cmd == "pi":
             player.ping = parse_int(value, 0)
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} pi={player.ping}")
-            self.send_tcp(game_cmd_echo())
+            self.send_tcp(game_cmd_echo(match.match_id))
             if peer:
                 sync_opponent_state_to_player(match, player, peer)
             su_pkt = None
@@ -1751,7 +1921,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             match.fighters[player.player_index - 1].character_type = player.character_type
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} typ={player.character_type}")
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
-                peer.conn.send_tcp(game_cmd_opp(player.character_type))
+                peer.conn.send_tcp(game_cmd_opp(match.match_id, player.character_type))
                 peer.sent_opp_character_type = player.character_type
             maybe_schedule_round_start(match, reason="typ")
             return
@@ -1766,7 +1936,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                 match.map_id = match.match_id % 5
             # Send rdy + mapId to opponent (not a raw relay)
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
-                peer.conn.send_tcp(game_cmd_rdy(match.map_id))
+                peer.conn.send_tcp(game_cmd_rdy(match.match_id, match.map_id))
                 peer.sent_ready_map_id = match.map_id
             maybe_schedule_round_start(match, reason="rdy")
             return
@@ -1785,7 +1955,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                 )
                 maybe_schedule_round_start(match, reason="fr")
             if peer and peer.cn_seen and not getattr(peer.conn, "closed", False):
-                peer.conn.send_tcp(game_cmd_fr(player.fr_progress))
+                peer.conn.send_tcp(game_cmd_fr(match.match_id, player.fr_progress))
                 peer.sent_load_frame = player.fr_progress
             return
 
@@ -1802,7 +1972,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
             player.rematch = True
             debug_print(f"[GAME] Match {match.match_id} P{player.player_index} rematch")
             if peer and peer.cn_seen:
-                peer.conn.send_tcp(game_cmd_rmch())
+                peer.conn.send_tcp(game_cmd_rmch(match.match_id))
                 peer.sent_rematch = True
             if match.full() and all(p.rematch for p in match.players.values()):
                 # Both agreed — reset game state for new round
@@ -1812,12 +1982,13 @@ class SmartFoxTCPHandler(StreamRequestHandler):
                 match.lded_sent = False
                 match.rnds_sent = False
                 for mp in match.players.values():
-                    mp.ready = False
+                    mp.ready = True
                     mp.ready_value = 1
-                    mp.fr_progress = 0
-                    mp.loaded = False
+                    mp.fr_progress = 100
+                    mp.loaded = True
                     mp.rematch = False
                     reset_player_sync_state(mp)
+                maybe_schedule_round_start(match, reason="rmch")
             return
 
         # ------------------------------------------------------------------ cu
@@ -1866,7 +2037,7 @@ class SmartFoxTCPHandler(StreamRequestHandler):
         if cmd == "cl":
             player.client_lag = parse_int(value, player.client_lag)
             if peer:
-                self.send_tcp(game_cmd_dl(peer.ping if peer.ping is not None else 0))
+                self.send_tcp(game_cmd_dl(match.match_id, peer.ping if peer.ping is not None else 0))
             return
 
         if cmd in ("ka", "ct", "box"):
