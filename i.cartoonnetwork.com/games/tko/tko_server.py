@@ -36,7 +36,9 @@ import os
 import random
 import re
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -151,6 +153,11 @@ class CharacterDefinition:
     projectile_by_name: dict = field(default_factory=dict)
     effects: list = field(default_factory=list)
     projectiles: list = field(default_factory=list)
+    animation_ranges: dict = field(default_factory=dict)
+    animation_labels: dict = field(default_factory=dict)
+    boxes_by_anim: dict = field(default_factory=dict)
+    anchor_x: float = 0.0
+    anchor_y: float = 0.0
 
 
 # ---------- Helpers ----------
@@ -470,6 +477,28 @@ def game_cmd_win(room_id, winner_zero_based):
     return xt_room_msg(room_id, "win", winner_zero_based)
 
 
+def game_cmd_fx(room_id, fx_id, anim_id, x, y, flip=0):
+    return xt_room_msg(room_id, "fx", fx_id, anim_id, int(x), int(y), flip, 0, -1)
+
+
+def game_cmd_cmbo(room_id, owner_index, hits, damage):
+    return xt_room_msg(room_id, "cmbo", owner_index, hits, damage)
+
+
+def game_cmd_shk(room_id, magnitude):
+    return xt_room_msg(room_id, "shk", magnitude)
+
+
+def game_cmd_adpj(room_id, projectile_id, anim_id, x, y, xvel, yvel, owner_index):
+    net_xvel = round((float(xvel) / (FRAME_MS * 2.0)) * 100.0) / 100.0
+    net_yvel = round((float(yvel) / FRAME_MS) * 100.0) / 100.0
+    return xt_room_msg(room_id, "adpj", projectile_id, anim_id, int(x), int(y), net_xvel, net_yvel, 0, owner_index, 0)
+
+
+def game_cmd_rmpj(room_id, projectile_id):
+    return xt_room_msg(room_id, "rmpj", projectile_id)
+
+
 def write_cnsl_xml(path, advertise_ip):
     xml = (
         "<?xml version='1.0' encoding='UTF-8'?>\n"
@@ -630,6 +659,251 @@ def build_special_input_map(special_list):
     return input_map, grouped, super_group_key
 
 
+ROBOT_BOX_NAMES = {"attackBox", "pushBox", "hitBoxLo", "hitBoxMid", "hitBoxHi"}
+ANIMATION_RATE = 30.0
+ROBOT_BOX_CACHE_VERSION = 2
+
+
+def find_ffdec_executable():
+    candidates = [
+        os.environ.get("FFDEC_PATH"),
+        r"C:\Program Files (x86)\FFDec\ffdec.bat",
+        r"C:\Program Files\FFDec\ffdec.bat",
+        r"C:\Program Files (x86)\JPEXS\ffdec.bat",
+        r"C:\Program Files\JPEXS\ffdec.bat",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _load_robot_box_cache(cache_path, swf_dir):
+    try:
+        with open(cache_path, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    if parse_int(payload.get("version"), 0) != ROBOT_BOX_CACHE_VERSION:
+        return {}
+    generated = parse_int(payload.get("generated"), 0)
+    if generated <= 0:
+        return {}
+    for entry in os.listdir(swf_dir):
+        if not re.fullmatch(r"robot\d+\.swf", entry, re.I):
+            continue
+        try:
+            if os.path.getmtime(os.path.join(swf_dir, entry)) > generated:
+                return {}
+        except OSError:
+            return {}
+    characters = payload.get("characters")
+    return characters if isinstance(characters, dict) else {}
+
+
+def _store_robot_box_cache(cache_path, characters):
+    payload = {
+        "version": ROBOT_BOX_CACHE_VERSION,
+        "generated": int(time.time()),
+        "characters": characters,
+    }
+    try:
+        with open(cache_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, separators=(",", ":"))
+    except Exception:
+        pass
+
+
+def _matrix_to_rect(bounds, matrix):
+    xmin, ymin, xmax, ymax = bounds
+    scale_x = float(matrix.get("scaleX", 1.0))
+    scale_y = float(matrix.get("scaleY", 1.0))
+    tx = float(matrix.get("translateX", 0.0))
+    ty = float(matrix.get("translateY", 0.0))
+    x1 = tx + (xmin * scale_x)
+    x2 = tx + (xmax * scale_x)
+    y1 = ty + (ymin * scale_y)
+    y2 = ty + (ymax * scale_y)
+    return [round(min(x1, x2), 2), round(min(y1, y2), 2), round(max(x1, x2), 2), round(max(y1, y2), 2)]
+
+
+def _collect_robot_frame_snapshots(tags, bounds, box_sprite_id):
+    display = {}
+    frames = []
+    for item in tags:
+        tag_type = item.attrib.get("type")
+        if tag_type in ("PlaceObject2Tag", "PlaceObject3Tag"):
+            depth = parse_int(item.attrib.get("depth"), -1)
+            if depth < 0:
+                continue
+            current = dict(display.get(depth, {})) if item.attrib.get("placeFlagMove") == "true" else {}
+            if "characterId" in item.attrib:
+                current["characterId"] = parse_int(item.attrib.get("characterId"), -1)
+            if "name" in item.attrib:
+                current["name"] = item.attrib.get("name")
+            matrix = item.find("matrix")
+            if matrix is not None:
+                current["matrix"] = {
+                    "scaleX": float(matrix.attrib.get("scaleX", "1") or 1),
+                    "scaleY": float(matrix.attrib.get("scaleY", "1") or 1),
+                    "translateX": float(matrix.attrib.get("translateX", "0") or 0) / 20.0,
+                    "translateY": float(matrix.attrib.get("translateY", "0") or 0) / 20.0,
+                }
+            display[depth] = current
+        elif tag_type == "RemoveObject2Tag":
+            depth = parse_int(item.attrib.get("depth"), -1)
+            if depth >= 0:
+                display.pop(depth, None)
+        elif tag_type == "ShowFrameTag":
+            snapshot = {}
+            for entry in display.values():
+                if entry.get("characterId") != box_sprite_id:
+                    continue
+                name = entry.get("name")
+                if name not in ROBOT_BOX_NAMES or "matrix" not in entry:
+                    continue
+                snapshot[name] = _matrix_to_rect(bounds, entry["matrix"])
+            frames.append(snapshot)
+    return frames
+
+
+def _extract_robot_animation_data(xml_path):
+    root = ET.parse(xml_path).getroot()
+    tags = root.find("tags")
+    if tags is None:
+        return None
+
+    scene = None
+    box_sprite_id = None
+    for item in tags:
+        tag_type = item.attrib.get("type")
+        if tag_type == "DefineSceneAndFrameLabelDataTag":
+            scene = item
+        if tag_type in ("PlaceObject2Tag", "PlaceObject3Tag") and item.attrib.get("name") in ROBOT_BOX_NAMES:
+            box_sprite_id = parse_int(item.attrib.get("characterId"), -1)
+        if scene is not None and box_sprite_id is not None:
+            break
+    if scene is None or box_sprite_id is None:
+        return None
+
+    box_shape_id = None
+    for item in tags:
+        if item.attrib.get("type") == "DefineSpriteTag" and parse_int(item.attrib.get("spriteId"), -1) == box_sprite_id:
+            for sub_item in item.find("subTags") or []:
+                if sub_item.attrib.get("type") in ("PlaceObject2Tag", "PlaceObject3Tag"):
+                    box_shape_id = parse_int(sub_item.attrib.get("characterId"), -1)
+                    break
+            if box_shape_id is not None:
+                break
+    if box_shape_id is None:
+        return None
+
+    shape = None
+    for item in tags:
+        if item.attrib.get("type", "").startswith("DefineShape") and parse_int(item.attrib.get("shapeId"), -1) == box_shape_id:
+            shape = item
+            break
+    if shape is None:
+        return None
+
+    frame_nums = [parse_int(node.text, 0) for node in scene.find("frameNums").findall("item")]
+    frame_names = [(node.text or "").strip() for node in scene.find("frameNames").findall("item")]
+    shape_bounds = shape.find("shapeBounds")
+    if shape_bounds is None:
+        return None
+    bounds = (
+        float(shape_bounds.attrib.get("Xmin", "0")) / 20.0,
+        float(shape_bounds.attrib.get("Ymin", "0")) / 20.0,
+        float(shape_bounds.attrib.get("Xmax", "0")) / 20.0,
+        float(shape_bounds.attrib.get("Ymax", "0")) / 20.0,
+    )
+
+    frames = _collect_robot_frame_snapshots(tags, bounds, box_sprite_id)
+    if not frames or not frame_nums:
+        return None
+
+    animation_ranges = {}
+    animation_labels = {}
+    boxes_by_anim = {}
+    for anim_id, start in enumerate(frame_nums):
+        if start >= len(frames):
+            continue
+        end = frame_nums[anim_id + 1] - 1 if anim_id + 1 < len(frame_nums) else len(frames) - 1
+        if end < start:
+            continue
+        animation_ranges[str(anim_id)] = [start, end]
+        animation_labels[str(anim_id)] = frame_names[anim_id] if anim_id < len(frame_names) else ""
+        boxes_by_anim[str(anim_id)] = frames[start:end + 1]
+
+    idle_frames = boxes_by_anim.get("0") or []
+    idle_push = idle_frames[0].get("pushBox") if idle_frames and idle_frames[0] else None
+    if idle_push:
+        anchor_x = round((idle_push[0] + idle_push[2]) / 2.0, 2)
+        anchor_y = round(idle_push[3], 2)
+    else:
+        anchor_x = 200.0
+        anchor_y = 360.0
+
+    return {
+        "anchor_x": anchor_x,
+        "anchor_y": anchor_y,
+        "animation_ranges": animation_ranges,
+        "animation_labels": animation_labels,
+        "boxes_by_anim": boxes_by_anim,
+    }
+
+
+def load_robot_box_data(base_dir):
+    swf_dir = os.path.join(base_dir, "4_0")
+    cache_path = os.path.join(swf_dir, "robot_box_cache.json")
+    cached = _load_robot_box_cache(cache_path, swf_dir)
+    if cached:
+        return cached
+
+    ffdec = find_ffdec_executable()
+    if not ffdec:
+        debug_print("[DATA] FFDec not found; using fallback collision boxes only")
+        return {}
+
+    extracted = {}
+    for entry in sorted(os.listdir(swf_dir)):
+        match = re.fullmatch(r"robot(\d+)\.swf", entry, re.I)
+        if not match:
+            continue
+        char_id = parse_int(match.group(1), -1)
+        if char_id < 0:
+            continue
+        swf_path = os.path.join(swf_dir, entry)
+        xml_fd = None
+        xml_path = None
+        try:
+            xml_fd, xml_path = tempfile.mkstemp(prefix=f"tko_robot_{char_id}_", suffix=".xml")
+            os.close(xml_fd)
+            subprocess.run(
+                [ffdec, "-swf2xml", swf_path, xml_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            data = _extract_robot_animation_data(xml_path)
+            if data:
+                extracted[str(char_id)] = data
+        except Exception as exc:
+            debug_print(f"[DATA] Failed to extract boxes from {entry}: {exc}")
+        finally:
+            if xml_path and os.path.exists(xml_path):
+                try:
+                    os.unlink(xml_path)
+                except OSError:
+                    pass
+
+    if extracted:
+        _store_robot_box_cache(cache_path, extracted)
+    return extracted
+
+
 def load_character_data(base_dir):
     global CHARACTER_DATA
     xml_dir = os.path.join(base_dir, "4_0")
@@ -638,6 +912,7 @@ def load_character_data(base_dir):
         CHARACTER_DATA = {}
         return 0
 
+    robot_boxes = load_robot_box_data(base_dir)
     for entry in os.listdir(xml_dir):
         if not re.fullmatch(r"\d+\.xml", entry):
             continue
@@ -653,6 +928,7 @@ def load_character_data(base_dir):
         effect_list = _parse_animation_section(root, "effectAnimations")
         projectile_list = _parse_animation_section(root, "projectileAnimations")
         input_map, grouped_specials, super_group_key = build_special_input_map(special_list)
+        robot_data = robot_boxes.get(str(char_id), {})
         data[char_id] = CharacterDefinition(
             char_id=char_id,
             name=first_text(root, "name", f"Robot {char_id}"),
@@ -663,6 +939,11 @@ def load_character_data(base_dir):
             projectile_by_name={anim.name: anim for anim in projectile_list if anim.name},
             effects=effect_list,
             projectiles=projectile_list,
+            animation_ranges=robot_data.get("animation_ranges", {}),
+            animation_labels=robot_data.get("animation_labels", {}),
+            boxes_by_anim=robot_data.get("boxes_by_anim", {}),
+            anchor_x=float(robot_data.get("anchor_x", 200.0)),
+            anchor_y=float(robot_data.get("anchor_y", 360.0)),
         )
     CHARACTER_DATA = data
     return len(data)
@@ -719,13 +1000,17 @@ class FighterState:
     anim: int = 0                 # animation id (BASE_ANIMATIONS values)
     facing: bool = True           # True = facing right (P1 default)
     attack_until: float = 0.0    # ms timestamp
+    attack_started_at: float = 0.0
+    active_attack: object = None
     hit_until: float = 0.0       # ms timestamp
+    block_until: float = 0.0
     knocked_out: bool = False
     special_until: float = 0.0
     special_move: object = None
     special_hit_done: bool = False
     last_hit_was_super: bool = False
     combo_hits: int = 0
+    combo_damage: int = 0
     last_key_bits: int = 0
     wins: int = 0
 
@@ -740,13 +1025,17 @@ def reset_fighter_for_round(f, x, facing):
     f.super_meter = 0
     f.anim = BASE_ANIMATIONS["IDLE"]
     f.attack_until = 0.0
+    f.attack_started_at = 0.0
+    f.active_attack = None
     f.hit_until = 0.0
+    f.block_until = 0.0
     f.knocked_out = False
     f.special_until = 0.0
     f.special_move = None
     f.special_hit_done = False
     f.last_hit_was_super = False
     f.combo_hits = 0
+    f.combo_damage = 0
     f.last_key_bits = 0
 
 
@@ -755,15 +1044,21 @@ def update_facing(f0, f1):
     f1.facing = f1.x < f0.x
 
 
-def clamp_players(f0, f1):
+def clamp_players(f0, f1, now=None):
     if f0.x < 150:
         f0.x = 150.0
     if f1.x > 1450:
         f1.x = 1450.0
-    if f0.x > f1.x - 120:
+    if now is None:
+        min_gap = 120.0
+    else:
+        push0 = get_fighter_push_rect(f0, now)
+        push1 = get_fighter_push_rect(f1, now)
+        min_gap = ((push0[2] - push0[0]) + (push1[2] - push1[0])) / 2.0
+    if f0.x > f1.x - min_gap:
         center = (f0.x + f1.x) / 2.0
-        f0.x = center - 60.0
-        f1.x = center + 60.0
+        f0.x = center - (min_gap / 2.0)
+        f1.x = center + (min_gap / 2.0)
 
 
 def apply_movement(fighter, opponent, now):
@@ -806,6 +1101,152 @@ def apply_movement(fighter, opponent, now):
 
 def get_character_definition(character_type):
     return CHARACTER_DATA.get(parse_int(character_type, -1))
+
+
+def get_animation_duration_ms(character_type, anim_id):
+    char_data = get_character_definition(character_type)
+    if not char_data:
+        return 0.0
+    start_end = char_data.animation_ranges.get(str(parse_int(anim_id, -1)))
+    if not start_end or len(start_end) < 2:
+        return 0.0
+    frame_count = max(1, start_end[1] - start_end[0] + 1)
+    return (frame_count * 1000.0) / ANIMATION_RATE
+
+
+def animation_has_attack_box(character_type, anim_id):
+    char_data = get_character_definition(character_type)
+    if not char_data:
+        return False
+    for frame in char_data.boxes_by_anim.get(str(parse_int(anim_id, -1))) or []:
+        if frame.get("attackBox"):
+            return True
+    return False
+
+
+def _rect_union(rects):
+    valid = [rect for rect in rects if rect]
+    if not valid:
+        return None
+    return [
+        min(rect[0] for rect in valid),
+        min(rect[1] for rect in valid),
+        max(rect[2] for rect in valid),
+        max(rect[3] for rect in valid),
+    ]
+
+
+def _rect_intersects(a, b):
+    if not a or not b:
+        return False
+    return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
+
+
+def _fallback_hurt_rect(fighter):
+    half_width = 58.0
+    top = fighter.y - 230.0
+    if fighter.y < GROUND_Y:
+        top -= 24.0
+    return [fighter.x - half_width, top, fighter.x + half_width, fighter.y]
+
+
+def _fallback_push_rect(fighter):
+    return [fighter.x - 55.0, fighter.y - 230.0, fighter.x + 55.0, fighter.y]
+
+
+def _get_local_box_frame(character_type, anim_id, elapsed_ms=0.0):
+    char_data = get_character_definition(character_type)
+    if not char_data:
+        return {}
+    frames = char_data.boxes_by_anim.get(str(parse_int(anim_id, -1))) or []
+    if not frames:
+        return {}
+    if elapsed_ms <= 0:
+        return frames[0]
+    frame_index = min(len(frames) - 1, max(0, int((elapsed_ms / 1000.0) * ANIMATION_RATE)))
+    return frames[frame_index]
+
+
+def _mirror_local_rect(local_rect, anchor_x):
+    return [
+        (anchor_x * 2.0) - local_rect[2],
+        local_rect[1],
+        (anchor_x * 2.0) - local_rect[0],
+        local_rect[3],
+    ]
+
+
+def _local_rect_to_world(character_type, fighter, local_rect):
+    char_data = get_character_definition(character_type)
+    if not char_data or not local_rect:
+        return None
+    rect = local_rect if fighter.facing else _mirror_local_rect(local_rect, char_data.anchor_x)
+    return [
+        round(fighter.x + (rect[0] - char_data.anchor_x), 2),
+        round(fighter.y + (rect[1] - char_data.anchor_y), 2),
+        round(fighter.x + (rect[2] - char_data.anchor_x), 2),
+        round(fighter.y + (rect[3] - char_data.anchor_y), 2),
+    ]
+
+
+def get_fighter_world_boxes(fighter, now, attack_elapsed_ms=None):
+    anim_id = fighter.anim
+    elapsed = 0.0
+    if attack_elapsed_ms is not None:
+        elapsed = attack_elapsed_ms
+    elif fighter.active_attack is not None and fighter.attack_started_at > 0:
+        anim_id = fighter.active_attack.get("anim", fighter.anim)
+        elapsed = max(0.0, now - fighter.attack_started_at)
+    local_boxes = _get_local_box_frame(fighter.character_type, anim_id, elapsed)
+    if not local_boxes:
+        return {}
+    world = {}
+    for name, rect in local_boxes.items():
+        world_rect = _local_rect_to_world(fighter.character_type, fighter, rect)
+        if world_rect:
+            world[name] = world_rect
+    return world
+
+
+def get_fighter_hurt_rect(fighter, now):
+    boxes = get_fighter_world_boxes(fighter, now)
+    hurt = _rect_union([boxes.get("hitBoxLo"), boxes.get("hitBoxMid"), boxes.get("hitBoxHi")])
+    return hurt or _fallback_hurt_rect(fighter)
+
+
+def get_fighter_push_rect(fighter, now):
+    boxes = get_fighter_world_boxes(fighter, now)
+    return boxes.get("pushBox") or _fallback_push_rect(fighter)
+
+
+def get_attack_rect(fighter, now, attack):
+    if not attack:
+        return None
+    elapsed = max(0.0, now - fighter.attack_started_at)
+    boxes = get_fighter_world_boxes(fighter, now, attack_elapsed_ms=elapsed)
+    return boxes.get("attackBox")
+
+
+def is_back_pressed(fighter):
+    bits = fighter.last_key_bits
+    return has_bit(bits, 2) if fighter.facing else has_bit(bits, 3)
+
+
+def is_blocking(fighter):
+    if fighter.y < GROUND_Y:
+        return False, False
+    if not is_back_pressed(fighter):
+        return False, False
+    crouching = has_bit(fighter.last_key_bits, 1)
+    return True, crouching
+
+
+def attack_connects(attacker, defender, attack, now):
+    attack_rect = get_attack_rect(attacker, now, attack)
+    hurt_rect = get_fighter_hurt_rect(defender, now)
+    if attack_rect and hurt_rect:
+        return _rect_intersects(attack_rect, hurt_rect)
+    return abs(attacker.x - defender.x) <= attack["range"] and abs(attacker.y - defender.y) <= 140
 
 
 def get_character_special_attack(fighter, bits):
@@ -955,22 +1396,123 @@ def choose_visual_animation_id(by_name, fallback_list, special_name, allow_singl
     return None
 
 
-def build_projectile_packet(match, fighter, attack):
-    projectile_id = attack.get("projectile_id")
-    if projectile_id is None:
+def spawn_effect_packet(match, anim_id, x, y, flip=0):
+    packet = game_cmd_fx(match.match_id, match.next_fx_id, anim_id, x, y, flip)
+    match.next_fx_id += 1
+    return packet
+
+
+def send_hit_effect(match, attacker, defender, strong):
+    effect_anim_id = 5 if strong else 4
+    effect_x = int((attacker.x + defender.x) / 2.0)
+    effect_y = int(min(attacker.y, defender.y) - 180.0)
+    if effect_y < 120:
+        effect_y = 120
+    return spawn_effect_packet(match, effect_anim_id, effect_x, effect_y, 0)
+
+
+def create_projectile_attack(match, fighter, attack, now):
+    projectile_anim = attack.get("projectile_id")
+    if projectile_anim is None:
         return None
-    velocity = int(attack.get("projectile_velocity", 0))
-    if velocity == 0:
-        velocity = 28 if fighter.facing else -28
-    return xt_room_msg(
+    owner_index = fighter.index
+    attack_rect = get_attack_rect(fighter, now, attack)
+    hurt_rect = get_fighter_hurt_rect(fighter, now)
+    spawn_x = fighter.x + (95.0 if fighter.facing else -95.0)
+    spawn_y = fighter.y - 145.0
+    source_rect = attack_rect or hurt_rect
+    if source_rect:
+        spawn_x = (source_rect[0] + source_rect[2]) / 2.0
+        spawn_y = (source_rect[1] + source_rect[3]) / 2.0
+    projectile = {
+        "id": match.next_projectile_id,
+        "type": projectile_anim,
+        "owner_index": owner_index,
+        "x": float(spawn_x),
+        "y": float(spawn_y),
+        "xvel": float(attack.get("projectile_velocity", 28 if fighter.facing else -28)),
+        "yvel": 0.0,
+        "damage": int(attack.get("projectile_damage", attack.get("damage", 70))),
+        "shake": int(max(5, attack.get("shake", 5))),
+        "effect_id": attack.get("effect_id"),
+        "expires_at": now + 2200.0,
+    }
+    match.next_projectile_id += 1
+    match.projectiles.append(projectile)
+    return game_cmd_adpj(
         match.match_id,
-        "adpj",
-        fighter.index,
-        projectile_id,
-        encode_base50(int(fighter.x)),
-        encode_base50(int(fighter.y)),
-        velocity,
+        projectile["id"],
+        projectile["type"],
+        projectile["x"],
+        projectile["y"],
+        projectile["xvel"],
+        projectile["yvel"],
+        projectile["owner_index"],
     )
+
+
+def _apply_block(match, attacker, defender, attack, now):
+    extra = []
+    _blocking, crouch_block = is_blocking(defender)
+    defender.block_until = now + 180.0
+    defender.hit_until = 0.0
+    defender.anim = BASE_ANIMATIONS["LOW_BLOCK" if crouch_block else "BLOCK"]
+    chip = 0
+    if attack.get("super"):
+        chip = max(chip, 8)
+    elif attack.get("projectile_id") is not None or attack.get("projectile"):
+        chip = max(chip, 5)
+    if chip > 0:
+        defender.health = max(0, defender.health - chip)
+    attacker.combo_hits = 0
+    attacker.combo_damage = 0
+    if attack.get("effect_id") is not None:
+        extra.append(spawn_effect_packet(match, attack["effect_id"], defender.x, defender.y - 120.0, 0 if attacker.facing else 1))
+    extra.append(game_cmd_shk(match.match_id, max(3, int(attack.get("shake", 4)) - 2)))
+    return extra
+
+
+def _apply_attack_hit(match, attacker, defender, attack, now):
+    extra = []
+    blocking, _crouch_block = is_blocking(defender)
+    if blocking and not attack.get("thrown"):
+        return _apply_block(match, attacker, defender, attack, now)
+
+    chained_hit = defender.hit_until > now
+    damage = int(attack.get("damage", 0))
+    defender.health = max(0, defender.health - damage)
+    defender.block_until = 0.0
+    defender.hit_until = now + (300.0 if attack.get("thrown") else 220.0)
+    if attack.get("thrown"):
+        defender.anim = BASE_ANIMATIONS["THROWN"]
+    elif defender.y < GROUND_Y:
+        defender.anim = BASE_ANIMATIONS["JUMP_HIT"]
+    else:
+        defender.anim = BASE_ANIMATIONS["HIT"]
+
+    attacker.super_meter = min(100, attacker.super_meter + (18 if damage >= 90 else 10))
+    attacker.last_hit_was_super = bool(attack.get("super") or attack.get("special_name"))
+    attacker.combo_hits = attacker.combo_hits + 1 if chained_hit else 1
+    attacker.combo_damage = attacker.combo_damage + damage if chained_hit else damage
+    defender.combo_hits = 0
+    defender.combo_damage = 0
+
+    if attacker.combo_hits >= 2:
+        extra.append(game_cmd_cmbo(match.match_id, attacker.index, attacker.combo_hits, attacker.combo_damage))
+
+    if attack.get("thrown"):
+        extra.append(xt_room_msg(match.match_id, "thrwn", attacker.index + 1))
+
+    if attack.get("effect_id") is not None:
+        extra.append(spawn_effect_packet(match, attack["effect_id"], defender.x, defender.y - 120.0, 0 if attacker.facing else 1))
+    else:
+        extra.append(send_hit_effect(match, attacker, defender, damage >= 90))
+
+    shake = int(attack.get("shake", 0))
+    if shake > 0:
+        extra.append(game_cmd_shk(match.match_id, shake))
+
+    return extra
 
 
 def apply_special_movement(match, fighter, opponent, attack, now):
@@ -981,13 +1523,14 @@ def apply_special_movement(match, fighter, opponent, attack, now):
     fighter.anim = attack["anim"]
     if fighter.special_hit_done:
         fighter.anim = attack.get("hit_anim") or attack.get("attack_anim") or attack["anim"]
-    elif attack.get("attack_anim") is not None and elapsed >= max(120.0, attack["lock"] * 0.45):
+    elif attack.get("attack_anim") is not None and elapsed >= max(120.0, attack["lock"] * 0.35):
         fighter.anim = attack["attack_anim"]
 
     if attack.get("dash") is not None:
         fighter.x += attack["dash"]
 
-    if not fighter.special_hit_done and abs(fighter.x - opponent.x) <= attack["range"] and abs(fighter.y - opponent.y) <= 140:
+    if (not fighter.special_hit_done and attack.get("projectile_id") is None and
+            attack_connects(fighter, opponent, attack, now)):
         fighter.special_hit_done = True
         extra.extend(_apply_attack_hit(match, fighter, opponent, attack, now))
         fighter.anim = attack.get("hit_anim") or attack.get("attack_anim") or fighter.anim
@@ -1000,71 +1543,37 @@ def apply_special_movement(match, fighter, opponent, attack, now):
     return extra
 
 
-def _apply_attack_hit(match, attacker, defender, attack, now):
-    """Apply damage and effects. Returns list of extra broadcast packets."""
-    extra = []
-    chained_hit = defender.hit_until > now
-    defender.health = max(0, defender.health - attack["damage"])
-    defender.hit_until = now + 220.0
-    if defender.y < GROUND_Y:
-        defender.anim = BASE_ANIMATIONS["JUMP_HIT"]
-    else:
-        defender.anim = BASE_ANIMATIONS["HIT"]
-
-    attacker.super_meter = min(100, attacker.super_meter + (18 if attack["damage"] >= 90 else 10))
-    attacker.last_hit_was_super = bool(attack.get("super") or attack.get("special_name"))
-    attacker.combo_hits = attacker.combo_hits + 1 if chained_hit else 1
-    defender.combo_hits = 0
-
-    if attacker.combo_hits >= 2:
-        extra.append(xt_room_msg(match.match_id, "cmbo", attacker.index, attacker.combo_hits))
-
-    if attack.get("thrown"):
-        extra.append(xt_room_msg(match.match_id, "thrwn", attacker.index + 1))
-        defender.anim = BASE_ANIMATIONS["THROWN"]
-
-    if attack.get("effect_id") is not None:
-        extra.append(
-            xt_room_msg(
-                match.match_id,
-                "fx",
-                attacker.index,
-                attack["effect_id"],
-                encode_base50(int(defender.x)),
-                encode_base50(int(defender.y)),
-            )
-        )
-    shake = attack.get("shake", 0)
-    if shake > 0:
-        extra.append(xt_room_msg(match.match_id, "shk", shake))
-
-    return extra
-
-
 def maybe_attack(match, fighter, opponent, now):
-    """Decide and apply attack if button bits say so.
-    Returns list of extra broadcast packets (shk, thrwn, sups)."""
     bits = fighter.last_key_bits
     extra = []
 
-    # Flags
     crouching = fighter.y >= GROUND_Y and has_bit(bits, 1)
-    airborne  = fighter.y < GROUND_Y
-
+    airborne = fighter.y < GROUND_Y
     attack = None
 
-    # Super (bit 13, 8192) — costs 100 super meter
     if has_bit(bits, 13) and fighter.super_meter >= 100:
         attack = get_character_super_attack(fighter)
         if attack is None:
-            attack = {"anim": BASE_ANIMATIONS["STRONG_PUNCH3"], "damage": 180,
-                      "range": 180, "lock": STRONG_LOCK_MS, "shake": 10, "super": True}
-
+            attack = {
+                "anim": BASE_ANIMATIONS["STRONG_PUNCH3"],
+                "damage": 180,
+                "range": 180,
+                "lock": STRONG_LOCK_MS,
+                "shake": 10,
+                "super": True,
+            }
     elif has_bit(bits, 8):
-        attack = {"anim": BASE_ANIMATIONS["THROW"], "damage": 90,
-                  "range": 120, "lock": THROW_LOCK_MS, "shake": 8, "thrown": True}
+        attack = {
+            "anim": BASE_ANIMATIONS["THROW"],
+            "damage": 90,
+            "range": 120,
+            "lock": THROW_LOCK_MS,
+            "shake": 8,
+            "thrown": True,
+        }
     else:
         attack = get_character_special_attack(fighter, bits)
+
     if attack is None and has_bit(bits, 7):
         a = BASE_ANIMATIONS["JUMP_STRONG_KICK1" if airborne else ("LOW_STRONG_KICK1" if crouching else "STRONG_KICK1")]
         attack = {"anim": a, "damage": 70, "range": 155, "lock": STRONG_LOCK_MS, "shake": 7}
@@ -1081,85 +1590,151 @@ def maybe_attack(match, fighter, opponent, now):
     if attack is None:
         return extra
 
-    fighter.anim = attack["anim"]
-    fighter.attack_until = now + attack["lock"]
+    attack = dict(attack)
+    animation_ms = get_animation_duration_ms(fighter.character_type, attack["anim"])
+    if animation_ms > 0:
+        attack["lock"] = max(float(attack["lock"]), animation_ms)
+    attack["hit_done"] = False
+    if attack.get("projectile_id") is not None:
+        attack["projectile"] = True
+        attack["projectile_damage"] = int(attack.get("projectile_damage", attack.get("damage", 80)))
 
-    projectile_pkt = build_projectile_packet(match, fighter, attack)
-    if projectile_pkt is not None:
-        extra.append(projectile_pkt)
+    fighter.anim = attack["anim"]
+    fighter.attack_started_at = now
+    fighter.active_attack = attack
+    fighter.attack_until = now + float(attack["lock"])
 
     if attack.get("super"):
         fighter.super_meter = 0
         extra.append(xt_room_msg(match.match_id, "sups", fighter.index, 600))
 
+    projectile_pkt = create_projectile_attack(match, fighter, attack, now)
+    if projectile_pkt is not None:
+        extra.append(projectile_pkt)
+
     if attack.get("dash") is not None or attack.get("jump") is not None:
-        fighter.special_until = now + attack["lock"]
+        fighter.special_until = now + float(attack["lock"])
         fighter.special_move = attack
         fighter.special_hit_done = False
         if attack.get("jump") is not None and fighter.y >= GROUND_Y:
             fighter.vy = float(attack["jump"])
+        return extra
 
-    # Check hit range
-    in_range = (abs(fighter.x - opponent.x) <= attack["range"] and abs(fighter.y - opponent.y) <= 120)
-    if attack.get("dash") is None and in_range:
+    if (projectile_pkt is None and not animation_has_attack_box(fighter.character_type, attack["anim"]) and
+            attack_connects(fighter, opponent, attack, now)):
+        attack["hit_done"] = True
         extra.extend(_apply_attack_hit(match, fighter, opponent, attack, now))
 
     return extra
 
 
+def update_projectiles(match, now):
+    if not match.projectiles:
+        return []
+    extra = []
+    for idx in range(len(match.projectiles) - 1, -1, -1):
+        projectile = match.projectiles[idx]
+        owner = match.fighters[projectile["owner_index"]]
+        target = match.fighters[1 - projectile["owner_index"]]
+        projectile["x"] += projectile["xvel"]
+        projectile["y"] += projectile["yvel"]
+
+        rect = [
+            projectile["x"] - 24.0,
+            projectile["y"] - 24.0,
+            projectile["x"] + 24.0,
+            projectile["y"] + 24.0,
+        ]
+        hurt_rect = get_fighter_hurt_rect(target, now)
+        expired = now >= projectile["expires_at"]
+        out_of_bounds = (
+            projectile["x"] < -100.0 or projectile["x"] > LEVEL_WIDTH + 100.0 or
+            projectile["y"] < -100.0 or projectile["y"] > GROUND_Y + 100.0
+        )
+        if _rect_intersects(rect, hurt_rect):
+            attack = {
+                "damage": projectile["damage"],
+                "shake": projectile["shake"],
+                "effect_id": projectile.get("effect_id"),
+                "projectile": True,
+            }
+            extra.extend(_apply_attack_hit(match, owner, target, attack, now))
+            extra.append(game_cmd_rmpj(match.match_id, projectile["id"]))
+            match.projectiles.pop(idx)
+            continue
+
+        if expired or out_of_bounds:
+            extra.append(game_cmd_rmpj(match.match_id, projectile["id"]))
+            match.projectiles.pop(idx)
+    return extra
+
+
 def update_player(match, fighter, opponent, now):
-    """Single-fighter update tick (updatePlayer in cnGame.as)."""
     if fighter.knocked_out:
         fighter.anim = BASE_ANIMATIONS["DEFEAT"]
+        fighter.active_attack = None
         return []
 
     extra = []
 
     if fighter.special_until > now and fighter.special_move is not None:
         extra = apply_special_movement(match, fighter, opponent, fighter.special_move, now)
+    elif fighter.block_until > now:
+        _blocked, crouch_block = is_blocking(fighter)
+        fighter.anim = BASE_ANIMATIONS["LOW_BLOCK" if crouch_block else "BLOCK"]
     elif fighter.hit_until > now:
         fighter.anim = BASE_ANIMATIONS["JUMP_HIT" if fighter.y < GROUND_Y else "HIT"]
+    elif fighter.attack_until > now and fighter.active_attack is not None:
+        if (fighter.active_attack.get("projectile") is not True and
+                not fighter.active_attack.get("hit_done") and
+                attack_connects(fighter, opponent, fighter.active_attack, now)):
+            fighter.active_attack["hit_done"] = True
+            extra.extend(_apply_attack_hit(match, fighter, opponent, fighter.active_attack, now))
     elif fighter.attack_until <= now:
+        fighter.active_attack = None
         apply_movement(fighter, opponent, now)
         extra = maybe_attack(match, fighter, opponent, now)
 
-    # Gravity
     if fighter.y < GROUND_Y or fighter.vy != 0:
         fighter.y += fighter.vy
         fighter.vy += GRAVITY
         if fighter.y >= GROUND_Y:
             fighter.y = float(GROUND_Y)
             fighter.vy = 0.0
-            if fighter.attack_until <= now and fighter.hit_until <= now:
+            if fighter.attack_until <= now and fighter.hit_until <= now and fighter.block_until <= now:
                 fighter.anim = BASE_ANIMATIONS["IDLE"]
 
-    if (fighter.attack_until <= now and fighter.hit_until <= now and
-            fighter.y >= GROUND_Y and not is_neutral_anim(fighter.anim)):
+    if (fighter.attack_until <= now and fighter.hit_until <= now and fighter.block_until <= now and
+            fighter.special_until <= now and fighter.y >= GROUND_Y and not is_neutral_anim(fighter.anim)):
         fighter.anim = BASE_ANIMATIONS["IDLE"]
 
     return extra
 
 
 def simulate_frame(match, now):
-    """One 40 ms physics tick. Returns list of extra packets to broadcast."""
     f0 = match.fighters[0]
     f1 = match.fighters[1]
     extra = []
 
     if match.round_resolved:
         if now >= match.round_end_time:
-            # resolve_round_end will be called after this frame
             match._resolve_pending = True
         return extra
 
     update_facing(f0, f1)
     extra.extend(update_player(match, f0, f1, now))
     extra.extend(update_player(match, f1, f0, now))
-    clamp_players(f0, f1)
+    extra.extend(update_projectiles(match, now))
+    clamp_players(f0, f1, now)
 
     elapsed = now - match.round_start_time
     if elapsed >= ROUND_TIME_MS:
-        _finish_round(match, winner_1based=0, time_up=True)
+        if f0.health == f1.health:
+            _finish_round(match, winner_1based=0, time_up=True)
+        elif f0.health > f1.health:
+            _finish_round(match, winner_1based=1, time_up=True)
+        else:
+            _finish_round(match, winner_1based=2, time_up=True)
         return extra
 
     if f0.health <= 0 and f1.health <= 0:
@@ -1196,11 +1771,14 @@ def _finish_round(match, winner_1based, time_up):
     match._resolve_pending = False
     match.pending_winner = winner_1based
     match.pending_time_up = time_up
+    match.projectiles = []
     f0, f1 = match.fighters[0], match.fighters[1]
     if winner_1based == 1:
+        f0.anim = BASE_ANIMATIONS["VICTORY"]
         f1.knocked_out = True
         f1.anim = BASE_ANIMATIONS["DEFEAT"]
     elif winner_1based == 2:
+        f1.anim = BASE_ANIMATIONS["VICTORY"]
         f0.knocked_out = True
         f0.anim = BASE_ANIMATIONS["DEFEAT"]
 
@@ -1263,6 +1841,9 @@ def game_start_round(match):
     match.round_end_time = 0.0
     match.last_tick = match.round_start_time
     match.next_su_id = 1
+    match.next_fx_id = 1
+    match.next_projectile_id = 1
+    match.projectiles = []
 
     f0 = match.fighters[0]
     f1 = match.fighters[1]
@@ -1288,6 +1869,9 @@ def game_reset_for_rematch(match):
     match.round_start_time = 0.0
     match.round_end_time = 0.0
     match.last_tick = 0.0
+    match.next_fx_id = 1
+    match.next_projectile_id = 1
+    match.projectiles = []
     for f in match.fighters:
         f.wins = 0
         f.last_key_bits = 0
@@ -1347,6 +1931,9 @@ class MatchState:
     round_end_time: float = 0.0
     last_tick: float = 0.0
     next_su_id: int = 1
+    next_fx_id: int = 1
+    next_projectile_id: int = 1
+    projectiles: list = field(default_factory=list)
     pending_winner: int = 0
     pending_time_up: bool = False
     created: float = field(default_factory=time.time)

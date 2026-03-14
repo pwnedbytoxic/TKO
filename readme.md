@@ -44,7 +44,8 @@ The project is no longer in the “basic connectivity only” stage. The current
 - timer, camera, movement, attacks, throws, health, meter, and rematch logic are server-driven
 - character special buttons are mapped by grouped move families from the original XML, so buttons land on entry-point animations instead of hold/drop/miss frames
 - in-match XT packets now include the SmartFox room-id slot so result, rematch, and visual-effect packets parse correctly on the client
-- projectile specials now spawn from the server with per-move projectile ids and travel velocity instead of incorrectly waiting for hit-confirm
+- projectile specials now spawn from the server as live authoritative objects with `adpj` / `rmpj` lifecycle packets
+- melee collision, pushback, and blocking now read real `pushBox` / `hitBox*` / `attackBox` data from the robot SWFs when those clips exist
 - BlueBox fallback works
 - the same HTTP server now serves both the Flash assets and the BlueBox endpoint
 
@@ -54,8 +55,9 @@ The remaining work is mostly polish and fidelity against the original game foota
 
 - tighten special-effect packet behavior for every character
 - continue validating round-start announcer timing and round-transition audio against recorded gameplay
-- improve projectile/effect lifecycle fidelity
+- continue refining per-character projectile spawn offsets and effect timing
 - continue refining “super KO” presentation and per-character attack visuals
+- fill the remaining characters whose SWFs do not expose named combat boxes, so they can leave the current fallback collision model
 - keep matching camera, hit reactions, and round flow as closely as possible to the original game
 
 ## How the Original Game Connects
@@ -161,6 +163,8 @@ Recent findings:
 - the original `specialAnimations` lists contain both button-entry animations and follow-up phase animations (`START` / `FLY` / `HIT` / `MISS` / `SUPER`), so button mapping needs to target entry-point move families rather than blindly consuming hold/drop/miss frames
 - several server-authored in-match packets must include the SmartFox room-id field on the wire, or the client misreads `rndo`, `win`, `rmch`, and synthesized effect packets
 - projectile and effect ids cannot be assigned by a blind "first asset in the list" fallback, or melee specials inherit the wrong visuals and real ranged moves never spawn correctly
+- many robot SWFs contain named timeline clips like `pushBox`, `hitBoxLo`, `hitBoxMid`, `hitBoxHi`, and `attackBox`; those can be extracted with FFDec and used server-side instead of relying only on scalar distance checks
+- not every robot SWF exposes those named clips in the same way, so the server currently mixes real extracted boxes where available with fallback rectangles where the asset data is missing or unnamed
 
 ## Disclaimer
 
